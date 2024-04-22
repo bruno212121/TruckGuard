@@ -1,0 +1,21 @@
+#Puerto
+PORT =
+
+#Configuracion de la Base de Datos
+DATABASE_PATH = '/path/to/database/'
+DATABASE_NAME = 'name.db'
+
+#Configuracion de la API URL
+API_URL = ''
+
+#Configuracion de JWT
+JWT_ACCESS_TOKEN_EXPIRES =
+
+#Configuracion de Email
+MAIL_HOSTNAME = 
+MAIL_SERVER = 
+MAIL_PORT = 
+MAIL_USE_TLS =
+MAIL_USERNAME = 
+MAIL_PASSWORD = 
+FLASKY_MAIL_SENDER = 

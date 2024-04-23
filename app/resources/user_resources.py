@@ -33,7 +33,7 @@ class User(Resource):
 
 class Users(Resource):
 
-    @jwt_required
+    #realizar decorador para proteger la ruta, solo lo puede ver el owner de la empresa 
     def get(self):
         page = 1
         per_page = 10

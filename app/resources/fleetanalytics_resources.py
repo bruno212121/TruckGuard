@@ -7,6 +7,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
 class Fleetanalytics(Resource):
 
+    # decorador owner
     def get(self, id):
         fleet = db.session.query(FleetAnalyticsModel).get_or_404(id)
         return fleet.to_json()

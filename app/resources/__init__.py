@@ -1,6 +1,6 @@
 from .drivers_resources import Driver as DriverResource
 from .drivers_resources import Drivers as DriversResources
-from .fleetanalytics_resources import FleetAnalytics as FleetAnalyticsResource
+from .fleetanalytics_resources import Fleetanalytics as FleetAnalyticsResource
 from .maintenance_resources import Maintenance as MaintenanceResource
 from .owner_resources import Owner as OwnerResource
 from .trip_resources import Trip as TripResource

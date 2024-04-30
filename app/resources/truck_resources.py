@@ -110,14 +110,14 @@ class Trucks(Resource):
                         trucks = trucks.order_by(TruckModel.status)
                     if value == 'status desc':
                         trucks = trucks.order_by(TruckModel.status.desc())
-    
-    trucks = trucks.paginate(page, per_page, True, 30)
-    return jsonify({
-        'trucks': [truck.to_json() for truck in trucks.items],
-        'total': trucks.total,
-        'pages': trucks.pages,
-        'page': page
-    })
+        
+        trucks = trucks.paginate(page, per_page, True, 30)
+        return jsonify({
+            'trucks': [truck.to_json() for truck in trucks.items],
+            'total': trucks.total,
+            'pages': trucks.pages,
+            'page': page
+        })
 
     @jwt_required
     def post(self):

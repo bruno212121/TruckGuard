@@ -1,6 +1,7 @@
 from .. import db
 
 
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -16,3 +17,8 @@ class User(db.Model):
 
     owner = db.relationship('Owner', back_populates='user')
     driver = db.relationship('Driver', back_populates='user')
+
+
+    def __repr__(self):
+        return f'<User: {self.id} {self.name} {self.surname} {self.email} {self.password} {self.rol} {self.phone} {self.status}>'
+    

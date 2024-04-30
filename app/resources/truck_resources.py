@@ -1,8 +1,9 @@
 from flask_restful import Resource
 from flask import request, jsonify
 from .. import db
-from ..models import TruckModel, OwnerModel, DriverModel
+from ..models import TruckModel, OwnerModel
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from ..utils.decorators import owner_required
 
 
 class Truck(Resource):
@@ -13,54 +14,42 @@ class Truck(Resource):
         return truck.to_json()
 
     @jwt_required
+    @owner_required
     def put(self, id):
         truck = db.session.query(TruckModel).get_or_404(id)
-        data = request.get_json().items()
+        data = request.get_json()
         user_id = get_jwt_identity()
-        claims = get_jwt()
-        if "rol" in claims:
-            if claims['rol'] == 'owner':
-                owner = db.session.query(OwnerModel).filter_by(user_id=user_id).first()
-                if owner:
-                    for key, value in data:
-                        setattr(truck, key, value)
-                    db.session.add(truck)
-                    db.session.commit()
-                    return truck.to_json(), 201
-                return {'message': 'No tienes permisos para modificar este camion'}, 400
-            if claims['rol'] == 'driver':
-                driver = db.session.query(DriverModel).filter_by(user_id=user_id).first()
-                if driver:
-                    for key, value in data:
-                        setattr(truck, key, value)
-                    db.session.add(truck)
-                    db.session.commit()
-                    return truck.to_json(), 201
-                return {'message': 'No tienes permisos para modificar este camion'}, 400
+        owner = db.session.query(OwnerModel).filter_by(user_id=user_id).first()
+        if owner:
+            for key, value in data.items():
+                setattr(truck, key, value)
+            db.session.add(truck)
+            db.session.commit()
+            return truck.to_json(), 200
+        return {'message': 'You do not have permission to modify this truck'}, 403
 
+        
 
     @jwt_required
+    @owner_required
     def patch(self, id):
         truck = db.session.query(TruckModel).get_or_404(id)
         new_status = request.get_json().get('status')
-        claims = get_jwt()
-        user_id = get_jwt_identity()
-        if "rol" in claims:
-            if claims['rol'] == 'owner':
-                owner = db.session.query(OwnerModel).filter_by(user_id=user_id).first()
-                if owner:
-                    if new_status:
-                        truck.status = new_status
-                        db.session.add(truck)
-                        db.session.commit()
-                        return truck.to_json(), 200
-                    return {'message': 'No se proporciono un nuevo estado'}, 400
-                return {'message': 'No tienes permisos para modificar este camion'}, 400
+        owner = db.session.query(OwnerModel).filter_by(user_id=get_jwt_identity).first()
+        if owner:
+            if new_status:
+                truck.status = new_status
+                db.session.add(truck)
+                db.session.commit()
+                return truck.to_json(), 200
+            return {'message': 'status is required'}, 400
+        return {'message': 'You do not have permission to modify this truck'}, 403
 
 
 class Trucks(Resource):
 
-    #Realizar decorador para acceso owner
+    @jwt_required
+    @owner_required
     def get(self):
         page = 1
         per_page = 10
@@ -120,17 +109,14 @@ class Trucks(Resource):
         })
 
     @jwt_required
+    @owner_required
     def post(self):
         data = request.get_json()
-        user_id = get_jwt_identity()
-        claims = get_jwt()
-        if "rol" in claims:
-            if claims['rol'] == 'owner':
-                owner = db.session.query(OwnerModel).filter_by(user_id=user_id).first()
-                if owner:
-                    truck = TruckModel.from_json(data)
-                    db.session.add(truck)
-                    db.session.commit()
-                    return truck.to_json(), 201
-                return {'message': 'this user does not have permission'}, 400
-        
+        owner = db.session.query(OwnerModel).filter_by(user_id=get_jwt_identity()).first()
+        if owner:
+            truck = TruckModel.from_json(data)
+            db.session.add(truck)
+            db.session.commit()
+            return truck.to_json(), 201
+        return {'message': 'You do not have permission to create a truck'}, 403
+    

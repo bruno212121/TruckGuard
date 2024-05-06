@@ -3,23 +3,33 @@ from flask import request, jsonify
 from .. import db
 from ..models import TruckModel, OwnerModel
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from ..utils.decorators import owner_required
+from ..utils.decorators import owner_required, driver_required
 
 
 class Truck(Resource):
 
+
     @jwt_required
+    @owner_required
     def get(self, id):
         truck = db.session.query(TruckModel).get_or_404(id)
-        return truck.to_json()
+        return truck.to_json(), 200
+
+    @jwt_required
+    @driver_required
+    def get_driver_truck(self, id):
+        truck = db.session.query(TruckModel).get_or_404(id)
+        driver_id = get_jwt_identity()
+        if truck.driver_id == driver_id:
+            return truck.to_json(), 200
+        return {'message': 'You do not have permission to view this truck'}, 403
 
     @jwt_required
     @owner_required
     def put(self, id):
         truck = db.session.query(TruckModel).get_or_404(id)
         data = request.get_json()
-        user_id = get_jwt_identity()
-        owner = db.session.query(OwnerModel).filter_by(user_id=user_id).first()
+        owner = db.session.query(OwnerModel).filter_by(user_id=get_jwt_identity()).first()
         if owner:
             for key, value in data.items():
                 setattr(truck, key, value)
@@ -28,7 +38,19 @@ class Truck(Resource):
             return truck.to_json(), 200
         return {'message': 'You do not have permission to modify this truck'}, 403
 
-        
+    @jwt_required
+    @driver_required
+    def put_driver_truck(self, id):
+        truck = db.session.query(TruckModel).get_or_404(id)
+        data = request.get_json()
+        user_id = get_jwt_identity()
+        if truck.driver_id == user_id:
+            for key, value in data.items():
+                setattr(truck, key, value)
+            db.session.add(truck)
+            db.session.commit()
+            return truck.to_json(), 200
+        return {'message': 'You do not have permission to modify this truck'}, 403
 
     @jwt_required
     @owner_required

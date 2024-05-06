@@ -2,6 +2,7 @@ from flask import request, jsonify, Blueprint
 from flask_jwt_extended import create_access_token
 from .. import db 
 from ..models import UserModel
+from ..mail.functions import send_email
 
 # Define the blueprint: 'auth', set its url prefix: app.url/auth
 auth = Blueprint('auth', __name__, url_prefix='/auth')
@@ -29,7 +30,7 @@ def login():
 @auth.route('/register', methods=['POST'])
 def register():
     user_data = request.get_json()
-    user = UserModel.from_json()
+    user = UserModel.from_json(user_data)
     existing_user = db.session.query(UserModel).filter_by(email=user.email).first()
     if existing_user:
         return jsonify({'message': 'Email already exists'}), 400
@@ -37,9 +38,13 @@ def register():
         try:
             db.session.add(user)
             db.session.commit()
-        #    sent =  # realizar funcion de mail para enviar mail 
-            return jsonify(user.to_json()), 201
+            success =  send_email(user.email, 'Welcome to the TruckGuard', 'welcome', user=user) 
+            if success:
+                return jsonify({'message': 'User created successfully'}), 201
+            else:
+                return jsonify({'message': 'User created successfully but could not send email'}), 201
         except Exception as e:
-            db.session.rollback() 
-            return jsonify({'message': 'Error while registering user', 'error': str(e)}), 500
+            db.session.rollback()
+            return jsonify({'message': 'Error creating user', 'error': str(e)}), 500
+
     

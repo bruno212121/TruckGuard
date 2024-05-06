@@ -4,12 +4,13 @@ from flask_restful import Api
 from flask_sqlalchemy import SQLAlchemy 
 from dotenv import load_dotenv 
 from flask_jwt_extended import JWTManager
+from flask_mail  import Mail
 
 # Create the SQLAlchemy object
 db = SQLAlchemy()
 api = Api()
 jwt = JWTManager()
-
+mailsender = Mail()
 
 def create_app():
 
@@ -52,6 +53,14 @@ def create_app():
 
     app.register_blueprint(routes.auth)
 
+    app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
+    app.config['MAIL_PORT'] = os.getenv('MAIL_PORT')
+    app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+    app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+    app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS')
+    app.config['MAIL_USE_SSL'] = os.getenv('MAIL_USE_SSL')
+
+    mailsender.init_app(app)
 
     return app
     

@@ -17,6 +17,7 @@ def create_app():
     app = Flask(__name__)
     load_dotenv()
 
+    secret_key = os.urandom(32)
 
     if not os.path.exists(os.getenv('DATABASE_PATH') + os.getenv('DATABASE_NAME')): # Check if the database exists
         os.mknod(os.getenv('DATABASE_PATH') + os.getenv('DATABASE_NAME')) 
@@ -33,17 +34,17 @@ def create_app():
     api.add_resource(resources.DriversResources, '/drivers')
     api.add_resource(resources.FleetAnalyticsResource, '/fleetanalytics')
     api.add_resource(resources.MaintenanceResource, '/maintenance')
-    api.add_resource(resources.OwnerResource, '/owner/<int:id>')
+    api.add_resource(resources.OwnerResource, '/owner/<int:id>') #encurso 
     api.add_resource(resources.TripResource, '/trip/<int:id>')
     api.add_resource(resources.TripsResources, '/trips')
     api.add_resource(resources.TruckResource, '/truck/<int:id>')
     api.add_resource(resources.TrucksResources, '/trucks')
-    api.add_resource(resources.UserResource, '/user/<int:id>')
-    api.add_resource(resources.UsersResources, '/users')
+    api.add_resource(resources.UserResource, '/user/<int:id>') #realizado
+    api.add_resource(resources.UsersResources, '/users') #realizado
 
     api.init_app(app) 
 
-    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY')
+    app.config['JWT_SECRET_KEY'] = secret_key.hex()
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES')) 
     
     jwt.init_app(app)
@@ -58,7 +59,7 @@ def create_app():
     app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
     app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
     app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS')
-    app.config['MAIL_USE_SSL'] = os.getenv('MAIL_USE_SSL')
+    app.config['FLASKY_MAIL_SENDER'] = os.getenv('FLASKY_MAIL_SENDER')
 
     mailsender.init_app(app)
 

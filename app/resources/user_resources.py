@@ -5,15 +5,17 @@ from ..models import UserModel
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 
+
 class User(Resource):
     
-    @jwt_required
+
+    @jwt_required()
     def get(self, id):
         user = db.session.query(UserModel).get_or_404(id) 
         return user.to_json()
     
 
-    @jwt_required 
+    @jwt_required()
     def put(self, id):
         user = db.session.query(UserModel).get_or_404(id)
         data = request.get_json().items()
@@ -23,7 +25,7 @@ class User(Resource):
             db.session.commit()
         return user.to_json(), 201
 
-    @jwt_required
+    @jwt_required()
     def delete(self, id):
         user = db.session.query(UserModel).get_or_404(id)
         db.session.delete(user)
@@ -33,34 +35,40 @@ class User(Resource):
 
 class Users(Resource):
 
-    #realizar decorador para proteger la ruta, solo lo puede ver el owner de la empresa 
+    @jwt_required()
     def get(self):
-        page = 1
-        per_page = 10
-        users = db.session.query(UserModel)
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        
+        # Calcular el índice de inicio y fin para la selección de la página
+        start = (page - 1) * per_page
+        end = start + per_page
+        
+        # Realizar la consulta filtrada
+        users_query = UserModel.query
+        
         if request.get_json():
             filters = request.get_json().items()
             for key, value in filters:
-                if key == 'page':
-                    page = int(value)
-                if key == 'per_page':
-                    per_page = value
                 if key == 'name':
-                    users = users.filter(UserModel.name.like(f'%{value}%'))
-
-                if key == 'sort_by':
-                    if value == 'name':
-                        users = users.order_by(UserModel.name)
-                    if value == 'name desc':
-                        users = users.order_by(UserModel.name.desc())
+                    users_query = users_query.filter(UserModel.name.like(f'%{value}%'))
         
-        users = users.paginate(page, per_page, True, 30)
+        # Seleccionar solo los usuarios correspondientes a la página actual
+        users = users_query.slice(start, end).all()
+        
+        # Contar el total de usuarios (sin aplicar paginación)
+        total_users = users_query.count()
+        
+        # Calcular el número total de páginas
+        total_pages = (total_users - 1) // per_page + 1
+        
         return jsonify({
-            'users': [user.to_json() for user in users.items],
-            'total': users.total,
-            'pages': users.pages,
+            'users': [user.to_json() for user in users],
+            'total': total_users,
+            'pages': total_pages,
             'page': page
-        })
+        })     
+        
     
 
     def post(self):

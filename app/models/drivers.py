@@ -6,23 +6,49 @@ class Driver(db.Model):
     name = db.Column(db.String(100), nullable=False)
     surname = db.Column(db.String(100), nullable=False)
     rol = db.Column(db.String(100), nullable=False)
-#    license = db.Column(db.String(100), nullable=False)
-    phone = db.Column(db.String(100), nullable=False)
+    phone = db.Column(db.String(100))
     status = db.Column(db.String(100), nullable=False, default='active')    
-    created_at = db.Column(db.DateTime, default=datetime.now(), nullable=False) 
-    updated_at = db.Column(db.DateTime, default=datetime.now(), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    truck_id = db.Column(db.Integer, db.ForeignKey('truck.id'), nullable=False)
-    maintenance_id = db.Column(db.Integer, db.ForeignKey('maintenance.id'), nullable=False)
-    trip_id = db.Column(db.Integer, db.ForeignKey('trip.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now()) 
+    updated_at = db.Column(db.DateTime, default=datetime.now())
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    truck_id = db.Column(db.Integer, db.ForeignKey('truck.truck_id'), nullable=False)
+    driver_id = db.Column(db.Integer, db.ForeignKey('driver.id'))
 
+    truck = db.relationship('Truck', back_populates='driver', single_parent=True, cascade="all,delete-orphan")
+    maintenances = db.relationship('Maintenance', back_populates='driver', cascade='all, delete-orphan')
+    trips = db.relationship('Trip', back_populates='driver', cascade="all, delete-orphan")
+    user = db.relationship('User', back_populates='driver', uselist=False, cascade='all, delete-orphan', single_parent=True)
     
-    user = db.relationship('User', back_populates='driver')
-    truck = db.relationship('Truck', back_populates='driver')
-    maintenance = db.relationship('Maintenance', back_populates='driver')
-    trip = db.relationship('Trip', back_populates='driver')
 
 
     def __repr__(self):
         return f'<Driver: {self.id} {self.name} {self.surname} {self.rol} {self.phone} {self.status} {self.created_at} {self.updated_at}>'
     
+    def to_json(self):
+        driver_json = {
+            'id': self.id,
+            'name': self.name,
+            'surname': self.surname,
+            'rol': self.rol,
+            'phone': self.phone,
+            'status': self.status,
+            'created_at': self.created_at,
+            'updated_at': self.updated_at
+        }
+        return driver_json
+    
+    @staticmethod
+    def from_json(driver_json):
+        id = driver_json.get('id')
+        name = driver_json.get('name')
+        surname = driver_json.get('surname')
+        rol = driver_json.get('rol')
+        phone = driver_json.get('phone')
+        status = driver_json.get('status')
+        return Driver(id=id, 
+                    name=name, 
+                    surname=surname, 
+                    rol=rol, 
+                    phone=phone, 
+                    status=status,
+                    )

@@ -1,24 +1,69 @@
 from .. import db
-
-
+from werkzeug.security import generate_password_hash, check_password_hash
 
 class User(db.Model):
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     surname = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
-    password = db.Column(db.String(100), nullable=False)
+    password = db.Column(db.String(128), nullable=False) #password_hash
     rol = db.Column(db.String(100), nullable=False)
-    phone = db.Column(db.String(100), nullable=False)
-    status = db.Column(db.String(100), nullable=False)
-    owner_id = db.Column(db.Integer, db.ForeignKey('owner.id'))
-    driver_id = db.Column(db.Integer, db.ForeignKey('driver.id'))
+    phone = db.Column(db.String(100))
+    status = db.Column(db.String(100), nullable=False, default='active')
 
 
-    owner = db.relationship('Owner', back_populates='user')
-    driver = db.relationship('Driver', back_populates='user')
+
+    owner = db.relationship('Owner', back_populates='user', uselist=False, cascade='all, delete-orphan', single_parent=True)
+    driver = db.relationship('Driver', back_populates='user', uselist=False, cascade='all, delete-orphan', single_parent=True)
+
+
+
+    @property
+    def plain_password(self):
+        raise AttributeError('Password is not a readable attribute')
+    
+    @plain_password.setter
+    def plain_password(self, password):
+        self.password = generate_password_hash(password)
+
+
+    def validate_password(self, password):
+        return check_password_hash(self.password, password)
 
 
     def __repr__(self):
-        return f'<User: {self.id} {self.name} {self.surname} {self.email} {self.password} {self.rol} {self.phone} {self.status}>'
+        return f'<User: {self.id} {self.name} {self.surname} {self.email} {self.rol} {self.phone} {self.status}>'
     
+
+    def to_json(self):
+        user_json = {
+            'id': self.id,
+            'name': self.name,
+            'surname': self.surname,
+            'email': self.email,
+            'rol': self.rol,
+            'phone': self.phone,
+            'status': self.status, 
+        }
+        return user_json
+    
+    @staticmethod
+    def from_json(user_json):
+        id = user_json.get('id')
+        name = user_json.get('name')
+        surname = user_json.get('surname')
+        email = user_json.get('email')
+        password = user_json.get('password')
+        rol = user_json.get('rol')
+        phone = user_json.get('phone')
+        status = user_json.get('status')
+        return User(id=id, 
+                    name=name, 
+                    surname=surname, 
+                    email=email, 
+                    plain_password=password, 
+                    rol=rol, 
+                    phone=phone, 
+                    status=status,
+                    )

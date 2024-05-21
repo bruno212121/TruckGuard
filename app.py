@@ -6,9 +6,10 @@ from app import db
 load_dotenv() 
 
 app = create_app()
-app.app_context().push()
 
+# Asegúrate de que db.create_all() se ejecute dentro del contexto de la aplicación
+with app.app_context():
+    db.create_all()
 
 if __name__ == '__main__':
-    db.create_all()
-    app.run(debug=True, port= os.getenv('PORT'))
+    app.run(debug=True, port=os.getenv('PORT'))

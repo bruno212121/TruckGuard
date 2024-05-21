@@ -2,6 +2,7 @@ from functools import wraps
 from flask_jwt_extended import verify_jwt_in_request, get_jwt, get_jwt_identity
 from ..models import DriverModel, TruckModel
 
+
 def owner_required(fn):
     @wraps(fn) # This is used to preserve the original function name
     def wrapper(*args, **kwargs):

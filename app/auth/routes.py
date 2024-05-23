@@ -2,9 +2,12 @@ from flask import request, jsonify, Blueprint
 from flask_jwt_extended import create_access_token
 from .. import db 
 from ..models import UserModel
-from ..mail.functions import send_email
+from ..mail.functions import sendMail
 #User' object has no attribute 'validate_password'
-
+#from flask_mail import Message
+#importar mailsender desde __init__.py
+#from .. import mailsender
+#from flask import render_template, current_app
 
 # Define the blueprint: 'auth', set its url prefix: app.url/auth
 auth = Blueprint('auth', __name__, url_prefix='/auth')
@@ -46,11 +49,9 @@ def register():
         try:
             db.session.add(user)
             db.session.commit()
-            sent =  send_email(user.email, 'Welcome to the TruckGuard', 'welcome', user=user) 
+            #sent = sendMail([user.email], "Welcome!", 'register', user=user)
         except Exception as error:
             db.session.rollback()
             return jsonify({'message': 'Error creating user'}), 500
         
         return user.to_json(), 201
-
-    

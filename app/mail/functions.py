@@ -3,17 +3,16 @@ from flask import current_app, render_template
 from flask_mail import Message
 from smtplib import SMTPException 
 
-def send_email(to, subject, template, **kwargs):
-    #config mail
-    msg = Message(subject, sender=current_app.config['MAIL_USERNAME'], recipients=[to])
-    
+def sendMail(to, subject, template, **kwargs):
+    #Configuracion del mail
+    msg = Message(subject, sender=current_app.config['FLASKY_MAIL_SENDER'], recipients=to)
     try:
-        #send email
+        #Creación del cuerpo del mensaje
         #msg.body = render_template(template + '.txt', **kwargs)
         msg.html = render_template(template + '.html', **kwargs)
-
+        #Envío de mail
         result = mailsender.send(msg)
     except SMTPException as e:
         print(str(e))
-        return "Error sending email", 500
-    return "Email sent", 200
+        return "Mail deliver failed"
+    return True

@@ -5,6 +5,8 @@ from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv 
 from flask_jwt_extended import JWTManager
 from flask_mail  import Mail
+#importar el nuevo blueprints de truck
+
 
 # Create the SQLAlchemy object
 db = SQLAlchemy()
@@ -30,6 +32,8 @@ def create_app():
 
     import app.resources as resources
 
+
+
     api.add_resource(resources.DriverResource, '/driver/<int:id>')
     api.add_resource(resources.DriversResources, '/drivers')
     api.add_resource(resources.FleetAnalyticsResource, '/fleetanalytics')
@@ -37,8 +41,6 @@ def create_app():
     api.add_resource(resources.OwnerResource, '/owner/<int:id>') #encurso 
     api.add_resource(resources.TripResource, '/trip/<int:id>')
     api.add_resource(resources.TripsResources, '/trips')
-    api.add_resource(resources.TruckResource, '/truck/<int:id>')
-    api.add_resource(resources.TrucksResources, '/trucks')
     api.add_resource(resources.UserResource, '/user/<int:id>') #realizado
     api.add_resource(resources.UsersResources, '/users') #realizado
 
@@ -50,17 +52,23 @@ def create_app():
     jwt.init_app(app)
 
 
+    from app.resources.truck_resources import trucks
+
+    app.register_blueprint(trucks)
+
     from app.auth import routes
 
     app.register_blueprint(routes.auth)
 
+     #Configuración de mail
+    #app.config['MAIL_HOSTNAME'] = os.getenv('MAIL_HOSTNAME')
     app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
     app.config['MAIL_PORT'] = os.getenv('MAIL_PORT')
+    app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS')
     app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
     app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
-    app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS')
     app.config['FLASKY_MAIL_SENDER'] = os.getenv('FLASKY_MAIL_SENDER')
-
+    #Inicializar en app
     mailsender.init_app(app)
 
     return app

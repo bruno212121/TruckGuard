@@ -1,6 +1,7 @@
 from .. import db 
 from datetime import datetime
 
+#falta driver_id para asignarlo 
 
 class Truck(db.Model):
 
@@ -22,5 +23,42 @@ class Truck(db.Model):
     maintenances = db.relationship('Maintenance', back_populates='truck', cascade="all,delete-orphan")
 
     def __repr__(self):
-        return f'<Truck: {self.id} {self.plate} {self.model} {self.brand} {self.year} {self.color} {self.status} {self.created_at} {self.updated_at}>'
+        return f'<Truck: {self.truck_id} {self.plate} {self.model} {self.brand} {self.year} {self.color} {self.status} {self.created_at} {self.updated_at}>'
     
+
+    def to_json(self):
+        return {
+            'truck_id': self.truck_id,
+            'plate': self.plate,
+            'model': self.model,
+            'brand': self.brand,
+            'year': self.year,
+            'color': self.color,
+            'status': self.status,
+            'created_at': self.created_at,
+            'updated_at': self.updated_at,
+            'owner_id': self.owner_id
+        }
+    
+    @staticmethod
+    def from_json(truck_json):
+        truck_id = truck_json.get('truck_id')
+        plate = truck_json.get('plate')
+        model = truck_json.get('model')
+        brand = truck_json.get('brand')
+        year = truck_json.get('year')
+        color = truck_json.get('color')
+        status = truck_json.get('status')
+        created_at = truck_json.get('created_at')
+        updated_at = truck_json.get('updated_at')
+        owner_id = truck_json.get('owner_id')
+        return Truck(truck_id=truck_id, 
+                     plate=plate, 
+                     model=model, 
+                     brand=brand, 
+                     year=year, 
+                     color=color, 
+                     status=status, 
+                     created_at=created_at, 
+                     updated_at=updated_at, 
+                     owner_id=owner_id)

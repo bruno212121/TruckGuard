@@ -5,7 +5,5 @@ from .maintenance_resources import Maintenance as MaintenanceResource
 from .owner_resources import Owner as OwnerResource
 from .trip_resources import Trip as TripResource
 from .trip_resources import Trips as TripsResources
-from .truck_resources import Truck as TruckResource
-from .truck_resources import Trucks as TrucksResources
 from .user_resources import User as UserResource
 from .user_resources import Users as UsersResources

@@ -10,14 +10,13 @@ class Driver(db.Model):
     status = db.Column(db.String(100), nullable=False, default='active')    
     created_at = db.Column(db.DateTime, default=datetime.now()) 
     updated_at = db.Column(db.DateTime, default=datetime.now())
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     truck_id = db.Column(db.Integer, db.ForeignKey('truck.truck_id'), nullable=False)
-    driver_id = db.Column(db.Integer, db.ForeignKey('driver.id'))
 
     truck = db.relationship('Truck', back_populates='driver', single_parent=True, cascade="all,delete-orphan")
     maintenances = db.relationship('Maintenance', back_populates='driver', cascade='all, delete-orphan')
     trips = db.relationship('Trip', back_populates='driver', cascade="all, delete-orphan")
-    user = db.relationship('User', back_populates='driver', uselist=False, cascade='all, delete-orphan', single_parent=True)
+    user = db.relationship('User', back_populates='driver')
     
 
 

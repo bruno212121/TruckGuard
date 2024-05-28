@@ -1,7 +1,7 @@
 from flask import request, jsonify, Blueprint
 from flask_jwt_extended import create_access_token
 from .. import db 
-from ..models import UserModel
+from ..models import UserModel, OwnerModel, DriverModel
 from ..mail.functions import sendMail
 #User' object has no attribute 'validate_password'
 #from flask_mail import Message
@@ -52,6 +52,7 @@ def register():
             #sent = sendMail([user.email], "Welcome!", 'register', user=user)
         except Exception as error:
             db.session.rollback()
+            print("haber que mierda pasa aca che",error)
             return jsonify({'message': 'Error creating user'}), 500
         
         return user.to_json(), 201

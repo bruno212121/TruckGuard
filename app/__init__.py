@@ -39,8 +39,6 @@ def create_app():
     api.add_resource(resources.FleetAnalyticsResource, '/fleetanalytics')
     api.add_resource(resources.MaintenanceResource, '/maintenance')
     api.add_resource(resources.OwnerResource, '/owner/<int:id>') #encurso 
-    api.add_resource(resources.TripResource, '/trip/<int:id>')
-    api.add_resource(resources.TripsResources, '/trips')
     api.add_resource(resources.UserResource, '/user/<int:id>') #realizado
     api.add_resource(resources.UsersResources, '/users') #realizado
 
@@ -55,6 +53,9 @@ def create_app():
     from app.resources.truck_resources import trucks
 
     app.register_blueprint(trucks)
+
+    from app.resources.trip_resources import trips
+    app.register_blueprint(trips)
 
     from app.auth import routes
 

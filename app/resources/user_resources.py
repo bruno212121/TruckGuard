@@ -38,7 +38,7 @@ class Users(Resource):
     @jwt_required()
     def get(self):
         page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
+        per_page = request.args.get('per_page', 5, type=int)
         
         # Calcular el índice de inicio y fin para la selección de la página
         start = (page - 1) * per_page

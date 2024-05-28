@@ -70,5 +70,3 @@ class Owners(Resource):
         db.session.add(owner)
         db.session.commit()
         return owner.to_json(), 201
-
-

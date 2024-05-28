@@ -1,6 +1,6 @@
 from functools import wraps
 from flask_jwt_extended import verify_jwt_in_request, get_jwt, get_jwt_identity
-from ..models import DriverModel, TruckModel
+from ..models import DriverModel, TruckModel, UserModel
 
 
 def owner_required(fn):
@@ -36,4 +36,14 @@ def driver_required(fn):
 
 
 
-
+def role_required(roles):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            current_user_id = get_jwt_identity()
+            current_user = UserModel.query.get(current_user_id)
+            if current_user.rol not in roles:
+                return {'message': 'You do not have permission'}, 403
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator

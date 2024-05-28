@@ -12,10 +12,12 @@ class User(db.Model):
     phone = db.Column(db.String(100))
     status = db.Column(db.String(100), nullable=False, default='active')
 
+    #owner_id = db.Column(db.Integer, db.ForeignKey('owner.id'), nullable=True)
+    #driver_id = db.Column(db.Integer, db.ForeignKey('driver.id'), nullable=True)
 
 
-    owner = db.relationship('Owner', back_populates='user', uselist=False, cascade='all, delete-orphan', single_parent=True)
-    driver = db.relationship('Driver', back_populates='user', uselist=False, cascade='all, delete-orphan', single_parent=True)
+    owner = db.relationship('Owner', back_populates='user', uselist=False, cascade='all, delete-orphan')
+    driver = db.relationship('Driver', back_populates='user', uselist=False, cascade='all, delete-orphan')
 
 
 
@@ -44,7 +46,7 @@ class User(db.Model):
             'email': self.email,
             'rol': self.rol,
             'phone': self.phone,
-            'status': self.status, 
+            'status': self.status,
         }
         return user_json
     

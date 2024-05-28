@@ -19,3 +19,7 @@ MAIL_USE_TLS =
 MAIL_USERNAME = 
 MAIL_PASSWORD = 
 FLASKY_MAIL_SENDER = 
+
+
+#serivicio de google
+API_KEY= key

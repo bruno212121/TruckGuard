@@ -49,7 +49,6 @@ class Trip(db.Model):
             'updated_at': self.date.strftime('%Y-%m-%d %H:%M:%S'),
             'driver_id': self.driver_id,
             'truck_id': self.truck_id,
-            'fleet_analyticsId': self.fleet_analyticsId
         }
         return trip_json
     

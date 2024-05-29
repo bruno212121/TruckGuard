@@ -2,7 +2,7 @@ from flask import request, jsonify, Blueprint, render_template, redirect, url_fo
 from .. import db
 from ..models import TruckModel, OwnerModel
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from ..utils.decorators import owner_required, driver_required
+from ..utils.decorators import role_required
 from datetime import datetime
 
 trucks = Blueprint('trucks', __name__, url_prefix='/trucks')
@@ -14,7 +14,7 @@ trucks = Blueprint('trucks', __name__, url_prefix='/trucks')
 #create truck
 @trucks.route('/new', methods=['POST'])
 @jwt_required()
-#@owner_required
+@role_required(['owner'])
 def create_truck():
     current_user = get_jwt_identity()
     if request.method == 'POST':
@@ -27,7 +27,7 @@ def create_truck():
 #listar todos los camiones
 @trucks.route('/all', methods=['GET'])
 @jwt_required()
-#@owner_required
+@role_required(['owner'])
 def list_trucks():
     trucks = db.session.query(TruckModel).all()
     trucks_list = [{'truck_id': truck.truck_id, 'model': truck.model, 'status': truck.status, 'owner_id': truck.owner_id,'brand': truck.brand} for truck in trucks]
@@ -36,7 +36,7 @@ def list_trucks():
 
 @trucks.route('/<int:id>', methods=['GET'])
 @jwt_required()
-#@owner_required
+@role_required(['owner'])
 def view_truck(id):
     truck = db.session.query(TruckModel).get_or_404(id)
     if truck.owner_id != truck.owner_id and truck.driver_id != truck.owner_id:
@@ -48,7 +48,7 @@ def view_truck(id):
 
 @trucks.route('/<int:id>/edit', methods=['PUT'])
 @jwt_required()
-#@owner_required
+@role_required(['owner'])
 def edit_truck(id):
     truck = db.session.query(TruckModel).get_or_404(id)
     if truck.owner_id != truck.owner_id and truck.driver_id != truck.owner_id:
@@ -68,7 +68,7 @@ def edit_truck(id):
 
 @trucks.route('/<int:id>/delete', methods=['DELETE'])
 @jwt_required()
-#@owner_required
+@role_required(['owner'])
 def delete_truck(id):
     truck = db.session.query(TruckModel).get_or_404(id)
     if truck.owner_id != truck.owner_id:
@@ -79,10 +79,11 @@ def delete_truck(id):
     return jsonify({'message': 'Truck deleted'}), 200
 
 
+#ver si lo puedo poner en la ruta de owner 
 #asignar camion a driver
 @trucks.route('/<int:id>/assign', methods=['PUT'])
 @jwt_required()
-#@owner_required
+@role_required(['owner'])
 def assign_truck(id):
     truck = db.session.query(TruckModel).get_or_404(id)
     if truck.owner_id != truck.owner_id:

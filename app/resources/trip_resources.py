@@ -1,7 +1,7 @@
 from flask_restful import Resource
 from flask import request, jsonify, Blueprint
 from .. import db
-from ..models import TripModel
+from ..models import TripModel, TruckModel, FleetAnalyticsModel
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from ..utils.decorators import role_required
 from app.google.locations import GoogleGetLocation
@@ -9,6 +9,7 @@ from datetime import datetime
 import asyncio
 
 trips = Blueprint('trips', __name__, url_prefix='/trips')
+
 
 
 #create trip
@@ -19,12 +20,25 @@ def create_trip():
     trip_json = request.get_json()
     origin = trip_json.get('origin')
     destination = trip_json.get('destination')
+    truck_id = trip_json.get('truck_id')
 
-        # Obtener la distancia y duración usando GoogleGetLocation
+
+    truck = TruckModel.query.get(truck_id)
+    if truck is None:
+        return jsonify({'error': 'Truck not found'}), 404
+    
+
+    
+    for maintenance in truck.maintenances: 
+        if maintenance.status == ['Fair']:
+            return jsonify({'message': f'The component {maintenance.component} is in fair condition'}), 200
+        elif maintenance.status == ['Maintenance Required']:
+            return jsonify({'error': f'The component {maintenance.component} is not in good condition'}), 400
+        
+        
     google_location = GoogleGetLocation()
     distance_info = asyncio.run(google_location.get_distance(origin, destination))
 
-        # Crear una nueva instancia de TripModel
     new_trip = TripModel(
             origin=origin,
             destination=destination,
@@ -36,7 +50,9 @@ def create_trip():
     db.session.add(new_trip)
     db.session.commit()
 
-    # Agregar la distancia y la duración a la respuesta
+    #aca esta el problema 
+    #FleetAnalyticsModel.update_fleet_analytics(truck.owner_id)
+
     response = new_trip.to_json()
     response.update(distance_info)
 
@@ -81,7 +97,7 @@ def list_trips():
     }), 200
 
 
-@trips.route('/<int:id>', methods=['GET'])
+@trips.route('/<int:id>', methods=['GET']) 
 @jwt_required()
 @role_required(['owner'])
 def view_trip(id):
@@ -98,7 +114,7 @@ def view_trip(id):
         trip_data = {
             'origin': trip.origin,
             'destination': trip.destination,
-            'status': trip.status,
+            'status trip': trip.status,
             'updated_at': trip.updated_at,
             'driver_id': trip.driver_id,
             'truck_id': trip.truck_id
@@ -106,24 +122,64 @@ def view_trip(id):
     return jsonify({'trip': trip_data}), 200
 
 
-@trips.route('/<int:id>/edit', methods=['PUT'])
+
+
+@trips.route('/<int:id>/update', methods=['PATCH']) 
 @jwt_required()
 #solo el owner o el driver con el id del driver pueden editar el viaje
-@role_required(['owner', 'driver'])
-def edit_trip(id):
+@role_required(['owner'])
+def update_trip(id):
+    trip = db.session.query(TripModel).get_or_404(id)
+    trip_json = request.get_json()
+
+    trip.origin = trip_json.get('origin', trip.origin)
+    trip.destination = trip_json.get('destination', trip.destination)
+    trip.status = trip_json.get('status trip', trip.status)
+    trip.driver_id = trip_json.get('driver_id', trip.driver_id)
+    trip.truck_id = trip_json.get('truck_id', trip.truck_id)
+
+    db.session.commit()
+
+    return jsonify({'message': 'Trip updated', 'trip': trip.to_json()}), 200
+
+    
+
+@trips.route('/<int:id>/complete', methods=['PATCH'])
+@jwt_required()
+@role_required(['driver', 'owner'])
+def complete_trip(id):
     trip = db.session.query(TripModel).get_or_404(id)
     if trip.driver_id != trip.driver_id and trip.owner_id != trip.owner_id:
         return jsonify({'message': 'Unauthorized'}), 403
 
-    data = request.get_json() 
-    if not data:
-        return jsonify({'message': 'No input data provided'}), 400
+    origin = trip.origin
+    destination = trip.destination
 
-    trip.status = data.get('status', trip.status)
-    trip.updated_at = datetime.now()
+
+    google_location = GoogleGetLocation()
+    distance_info = asyncio.run(google_location.get_distance(origin, destination)) 
+    distance_km = int(distance_info['distance'].split(' ')[0].replace(',', '')) 
+
+    truck = trip.truck
+    truck.update_mileage(distance_km)
+    truck.check_maintenance()
+
+
+    remaining_km = truck.calculate_remaining_km_until_services()
+   
+    truck.check_maintenance()
+
     db.session.commit()
 
-    return jsonify({'message': 'Trip updated', 'trip Origin': trip.origin, 'trip Destination': trip.destination, 'status': trip.status, 'updated_at': trip.updated_at}), 200
+    FleetAnalyticsModel.update_fleet_analytics(truck.owner_id)
+
+    response = trip.to_json() 
+    response.update(distance_info) 
+    response.update(truck.to_json()) 
+    response['remaining_km_until_services'] = remaining_km
+
+    return jsonify(response), 200
+
 
 
 #eliminar viaje solamente el owner una vez que este en estado Completed puede eliminarlo

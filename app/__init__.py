@@ -33,10 +33,6 @@ def create_app():
     import app.resources as resources
 
 
-
-    api.add_resource(resources.DriverResource, '/driver/<int:id>')
-    api.add_resource(resources.DriversResources, '/drivers')
-    api.add_resource(resources.OwnerResource, '/owner/<int:id>') #encurso 
     api.add_resource(resources.UserResource, '/user/<int:id>') #realizado
     api.add_resource(resources.UsersResources, '/users') #realizado
 

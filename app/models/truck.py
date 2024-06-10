@@ -16,19 +16,34 @@ class Truck(db.Model):
     health_status = db.Column(db.String(100), nullable=False, default='Good') #estado de salud
     created_at = db.Column(db.DateTime, default=datetime.now(), nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.now(), nullable=False)
-    owner_id = db.Column(db.Integer, db.ForeignKey('owner.id'), nullable=False)
+    owner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     fleetanalytics_id = db.Column(db.Integer, db.ForeignKey('fleet_analytics.id'), nullable=False)
-    driver_id = db.Column(db.Integer, db.ForeignKey('driver.id'), nullable=True)  # Nueva columna driver_id
+    driver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  
 
-
-    owner = db.relationship('Owner', back_populates='trucks', uselist=False, single_parent=True)
-    driver = db.relationship('Driver', back_populates='truck', uselist=False, cascade="all, delete-orphan",single_parent=True)
+    owner = db.relationship('User', foreign_keys=[owner_id], back_populates='trucks_as_owner', uselist=False, single_parent=True)
+    driver = db.relationship('User', foreign_keys=[driver_id], back_populates='trucks_as_driver', uselist=False, cascade="all, delete-orphan", single_parent=True)
     trip = db.relationship('Trip', back_populates='truck', uselist=False, cascade="all, delete-orphan", single_parent=True)
     maintenances = db.relationship('Maintenance', back_populates='truck', cascade="all,delete-orphan")
     fleetanalytics = db.relationship('FleetAnalytics', back_populates='trucks', uselist=False, single_parent=True)
 
+
+
+    def __init__(self, owner_id, plate, model, brand, year, color, mileage, health_status, fleetanalytics_id, driver_id):
+        self.owner_id = owner_id
+        self.plate = plate
+        self.model = model
+        self.brand = brand
+        self.year = year
+        self.color = color
+        self.mileage = mileage
+        self.health_status = health_status
+        self.fleetanalytics_id = fleetanalytics_id
+        self.driver_id = driver_id
+
+
     def __repr__(self):
-        return f'<Truck: {self.truck_id} {self.plate} {self.model} {self.brand} {self.year} {self.color} {self.status} {self.created_at} {self.updated_at}>'
+        return f'<Truck: {self.truck_id} {self.plate} {self.model} {self.brand} {self.year} {self.color} {self.status} {self.created_at} {self.updated_at} {self.owner_id} {self.driver_id}>'
+    
     
 
     def to_json(self):

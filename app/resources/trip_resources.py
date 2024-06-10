@@ -27,14 +27,13 @@ def create_trip():
     if truck is None:
         return jsonify({'error': 'Truck not found'}), 404
     
-
+    fair_components = []
     
     for maintenance in truck.maintenances: 
-        if maintenance.status == ['Fair']:
-            return jsonify({'message': f'The component {maintenance.component} is in fair condition'}), 200
-        elif maintenance.status == ['Maintenance Required']:
-            return jsonify({'error': f'The component {maintenance.component} is not in good condition'}), 400
-        
+        if maintenance.status == 'Maintenance Required':
+            return jsonify({'error': f'The component {maintenance.component} requires maintenance'}), 400
+        elif maintenance.status == 'Fair':
+            fair_components.append(maintenance.component)
         
     google_location = GoogleGetLocation()
     distance_info = asyncio.run(google_location.get_distance(origin, destination))
@@ -45,16 +44,19 @@ def create_trip():
             status=trip_json.get('status', 'Pending'),
             driver_id=trip_json.get('driver_id'),
             truck_id=trip_json.get('truck_id'),
+            date=datetime.now(),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
     )
 
     db.session.add(new_trip)
     db.session.commit()
 
-    #aca esta el problema 
-    #FleetAnalyticsModel.update_fleet_analytics(truck.owner_id)
-
     response = new_trip.to_json()
     response.update(distance_info)
+
+    if fair_components:
+        response['Warning'] = f'The components {", ".join(fair_components)} are in fair condition'
 
     return response, 201
 
@@ -149,36 +151,40 @@ def update_trip(id):
 @role_required(['driver', 'owner'])
 def complete_trip(id):
     trip = db.session.query(TripModel).get_or_404(id)
+    
     if trip.driver_id != trip.driver_id and trip.owner_id != trip.owner_id:
         return jsonify({'message': 'Unauthorized'}), 403
 
-    origin = trip.origin
-    destination = trip.destination
+    try:
+        origin = trip.origin
+        destination = trip.destination
 
 
-    google_location = GoogleGetLocation()
-    distance_info = asyncio.run(google_location.get_distance(origin, destination)) 
-    distance_km = int(distance_info['distance'].split(' ')[0].replace(',', '')) 
+        google_location = GoogleGetLocation()
+        distance_info = asyncio.run(google_location.get_distance(origin, destination)) 
+        distance_km = int(distance_info['distance'].split(' ')[0].replace(',', '')) 
 
-    truck = trip.truck
-    truck.update_mileage(distance_km)
-    truck.check_maintenance()
+        truck = trip.truck
+        truck.update_mileage(distance_km)
+        truck.check_maintenance()
 
 
-    remaining_km = truck.calculate_remaining_km_until_services()
-   
-    truck.check_maintenance()
+        remaining_km = truck.calculate_remaining_km_until_services()
+    
+        truck.check_maintenance()
 
-    db.session.commit()
+        db.session.commit()
 
-    FleetAnalyticsModel.update_fleet_analytics(truck.owner_id)
+        FleetAnalyticsModel.update_fleet_analytics(truck.owner_id)
 
-    response = trip.to_json() 
-    response.update(distance_info) 
-    response.update(truck.to_json()) 
-    response['remaining_km_until_services'] = remaining_km
+        response = trip.to_json() 
+        response.update(distance_info) 
+        response.update(truck.to_json()) 
+        response['remaining_km_until_services'] = remaining_km
 
-    return jsonify(response), 200
+        return jsonify(response), 200
+    except Exception as e:
+        return jsonify({'message': "Error completing the trip", 'error': str(e)}), 500
 
 
 

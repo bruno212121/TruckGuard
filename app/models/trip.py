@@ -11,18 +11,23 @@ class Trip(db.Model):
     status = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(), nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.now(), nullable=False)
-    driver_id = db.Column(db.Integer, db.ForeignKey('driver.id'), nullable=False)
+    driver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     truck_id = db.Column(db.Integer, db.ForeignKey('truck.truck_id'), nullable=False)
-    #fleetanalytics_id = db.Column(db.Integer, db.ForeignKey('fleetanalytics.id'))
-    
-    driver = db.relationship('Driver', back_populates='trips', uselist=False, single_parent=True)
-    truck = db.relationship('Truck', back_populates='trip', single_parent=True, cascade="all,delete-orphan")
-    #fleetanalytics = db.relationship('FleetAnalytics', back_populates='trips', uselist=False, single_parent=True)
 
-    """
-    def __repr__(self):
-        return f'<Trip: {self.id} {self.date} {self.origin} {self.destination} {self.status} {self.created_at} {self.updated_at} '
-    """
+    
+    driver = db.relationship('User', back_populates='trips_as_driver', uselist=False, single_parent=True)
+    truck = db.relationship('Truck', back_populates='trip', single_parent=True, cascade="all,delete-orphan")
+   
+
+    def __init__(self, date, origin, destination, status, created_at, updated_at, driver_id, truck_id):
+        self.date = date
+        self.origin = origin
+        self.destination = destination
+        self.status = status
+        self.created_at = created_at
+        self.updated_at = updated_at
+        self.driver_id = driver_id
+        self.truck_id = truck_id
 
     def __repr__(self):
         trip_json = {

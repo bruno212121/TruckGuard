@@ -12,13 +12,10 @@ class User(db.Model):
     phone = db.Column(db.String(100))
     status = db.Column(db.String(100), nullable=False, default='active')
 
-    #owner_id = db.Column(db.Integer, db.ForeignKey('owner.id'), nullable=True)
-    #driver_id = db.Column(db.Integer, db.ForeignKey('driver.id'), nullable=True)
 
-
-    owner = db.relationship('Owner', back_populates='user', uselist=False, cascade='all, delete-orphan')
-    driver = db.relationship('Driver', back_populates='user', uselist=False, cascade='all, delete-orphan')
-
+    trucks_as_owner = db.relationship('Truck', foreign_keys='Truck.owner_id', primaryjoin='User.id==Truck.owner_id', back_populates='owner')
+    trucks_as_driver = db.relationship('Truck', foreign_keys='Truck.driver_id', primaryjoin='User.id==Truck.driver_id', back_populates='driver')
+    trips_as_driver = db.relationship('Trip', foreign_keys='Trip.driver_id', primaryjoin='User.id==Trip.driver_id', back_populates='driver')  
 
 
     @property
@@ -37,6 +34,7 @@ class User(db.Model):
     def __repr__(self):
         return f'<User: {self.id} {self.name} {self.surname} {self.email} {self.rol} {self.phone} {self.status}>'
     
+
 
     def to_json(self):
         user_json = {

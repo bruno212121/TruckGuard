@@ -82,18 +82,14 @@ class FleetAnalytics(db.Model):
         
         try:
             total_trips = db.session.query(db.func.count(Trip.id)).join(Truck).filter(Truck.owner_id == user_id).scalar()
-            print(f"Total trips for user_id {user_id}: {total_trips}")
-
+            
             total_maintenance_cost = db.session.query(db.func.sum(Maintenance.cost)).join(Truck).filter(Truck.owner_id == user_id).scalar() or 0.0
-            print(f"Total maintenance cost for user_id {user_id}: {total_maintenance_cost}")
 
             total_drivers = db.session.query(db.func.count(User.id)).join(Truck, User.id == Truck.driver_id).filter(User.rol == 'driver', Truck.owner_id == user_id).scalar()
-            print(f"Total drivers for user_id {user_id}: {total_drivers}")
 
             total_trucks = db.session.query(db.func.count(Truck.truck_id)).filter(Truck.owner_id == user_id).scalar()
-            print(f"Total trucks for user_id {user_id}: {total_trucks}")
 
-            print(f"Updating fleet analytics for user_id: {user_id}")
+           
             fleet_analytics.total_trips = total_trips
             fleet_analytics.total_maintenance = total_maintenance_cost
             fleet_analytics.total_drivers = total_drivers
@@ -101,6 +97,7 @@ class FleetAnalytics(db.Model):
 
             db.session.add(fleet_analytics)
             db.session.commit()
+            
             print(f"Completed update_fleet_analytics for user_id: {user_id}")
 
         except Exception as e:

@@ -100,16 +100,52 @@ def list_trucks():
         trucks_list.append(truck_data)
     return jsonify({'trucks': trucks_list}), 200
 
+
 @trucks.route('/<int:id>', methods=['GET'])
 @jwt_required()
 @role_required(['owner'])
 def view_truck(id):
+    current_user_id = get_jwt_identity()
     truck = db.session.query(TruckModel).get_or_404(id)
-    if truck.owner_id != truck.owner_id and truck.driver_id != truck.owner_id:
+
+    # Comprobar si el usuario actual es el dueño o el chofer del camión
+    if truck.owner_id != current_user_id and truck.driver_id != current_user_id:
         return jsonify({'message': 'Unauthorized'}), 403
     
-    truck_data = {'truck_id': truck.truck_id, 'plate': truck.plate, 'model': truck.model, 'brand': truck.brand, 'year': truck.year,'mileage': truck.mileage, 'color': truck.color, 'status': truck.status, 'updated_at': truck.updated_at}
+    # Suponiendo que la relación entre TruckModel y UserModel está establecida y se llama 'driver'
+    driver = truck.driver
+
+    truck_data = {
+        'truck_id': truck.truck_id, 
+        'plate': truck.plate, 
+        'model': truck.model, 
+        'brand': truck.brand, 
+        'year': truck.year,
+        'mileage': truck.mileage, 
+        'color': truck.color, 
+        'status': truck.status, 
+        'updated_at': truck.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+    }
+
+    # Añadir información del chofer si está disponible
+    if driver:
+        truck_data['driver'] = {
+            'id': driver.id,
+            'name': driver.name,
+            'email': driver.email,
+            'phone': driver.phone
+        }
+    else:
+        truck_data['driver'] = 'No driver assigned'
+
     return jsonify({'truck': truck_data}), 200
+
+
+
+
+
+
+
 
 
 @trucks.route('/<int:id>/edit', methods=['PUT'])
@@ -145,22 +181,40 @@ def delete_truck(id):
     return jsonify({'message': 'Truck deleted'}), 200
 
 
+#numero id de camion a asignar
 
-#asignar camion ya asignado a otro driver
 @trucks.route('/<int:id>/assign', methods=['PUT'])
 @jwt_required()
 @role_required(['owner'])
 def assign_truck(id):
-    truck = db.session.query(TruckModel).get_or_404(id)
-    if truck.owner_id != truck.owner_id:
-        return jsonify({'message': 'Not anaothorized'}), 403
-    
-    data = request.get_json()
-    if not data or 'driver_id' not in data:
-        return jsonify({'message': 'No input data provided or driver id missing'}), 400
-    
-    truck.driver_id = data.get('driver_id')
-    truck.updated_at = datetime.now()
-    db.session.commit()
+    try:
 
-    return jsonify({'message': 'Truck assign', 'truck': truck.model, 'brand': truck.bran }), 200
+        truck = db.session.query(TruckModel).get_or_404(id)
+
+        if truck.owner_id != truck.owner_id:
+            return jsonify({'message': 'Not anaothorized'}), 403
+        
+        data = request.get_json()
+        print("a verte", data)
+        if not data or 'driver_id' not in data:
+            return jsonify({'message': 'No input data provided or driver id missing'}), 400
+        
+        driver_id = data.get('driver_id')
+        driver = UserModel.query.filter_by(id=driver_id, rol='driver').first()
+        if not driver:
+            return jsonify({'message': 'Invalid driver id or the user does not have the driver role'}), 400
+        
+        if truck.driver_id == driver_id:
+            return jsonify({'message': 'Truck already assigned to this driver'}), 400
+        
+        truck.driver_id = data.get('driver_id')
+        truck.updated_at = datetime.now()
+        db.session.commit()
+
+        return jsonify({'message': 'Truck assign', 'truck': truck.model, 'Name driver': driver.name, 'Surname driver': driver.surname}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': 'Error assigning truck', 'error': str(e)}), 500
+
+    

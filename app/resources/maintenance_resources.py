@@ -44,24 +44,24 @@ def create_maintenance():
     return jsonify({'message': 'Maintenance created', 'component': new_maintenance.component}), 201
 
 
-#no va creo ya con el nuevo de truckid te muestra los componentes de cada camion para areglar
-@maintenance.route('/all', methods=['GET'])
-@jwt_required()
-@role_required(['owner'])
-def list_maintenances():
-    maintenances = db.session.query(MaintenanceModel).all()
-    maintenances_list = [maintenance.to_json() for maintenance in maintenances]
-    return jsonify({'maintenances': maintenances_list}), 200
+# #no va creo ya con el nuevo de truckid te muestra los componentes de cada camion para areglar
+# @maintenance.route('/all', methods=['GET'])
+# @jwt_required()
+# @role_required(['owner'])
+# def list_maintenances():
+#     maintenances = db.session.query(MaintenanceModel).all()
+#     maintenances_list = [maintenance.to_json() for maintenance in maintenances]
+#     return jsonify({'maintenances': maintenances_list}), 200
 
 
-@maintenance.route('/<int:id>', methods=['GET'])
-@jwt_required()
-@role_required(['owner', 'driver'])
-def view_maintenance(id):
-    maintenance = db.session.query(MaintenanceModel).get_or_404(id)
+# @maintenance.route('/<int:id>', methods=['GET'])
+# @jwt_required()
+# @role_required(['owner', 'driver'])
+# def view_maintenance(id):
+#     maintenance = db.session.query(MaintenanceModel).get_or_404(id)
     
-    maintenance_data = maintenance.to_json()
-    return jsonify({'maintenance': maintenance_data}), 200
+#     maintenance_data = maintenance.to_json()
+#     return jsonify({'maintenance': maintenance_data}), 200
 
 
 
@@ -84,28 +84,20 @@ def edit_maintenance(id):
 
     return jsonify({'message': 'Maintenance updated', 'maintenance': maintenance.description, 'status Maintenance': maintenance.status, 'Cost': maintenance.cost}), 200
     
-@maintenance.route('/<int:truck_id>/component', methods=['POST'])
+@maintenance.route('/<int:truck_id>/component/<int:component_id>', methods=['GET'])
 @jwt_required()
 @role_required(['owner'])
-def add_component(truck_id):
+def add_component(truck_id, component_id):
+
     truck = TruckModel.query.get_or_404(truck_id)
-    data = request.get_json()
+    component = MaintenanceModel.query.get_or_404(component_id)
 
-    component_name = data.get('component') 
-    maintenance_interval = data.get('maintenance_interval') 
 
-    if not component_name or not maintenance_interval:
-        return jsonify({'error': 'Component name and maintenance interval are required'}), 400
+    if not component:
+        return jsonify({'error': 'Component not found this truck'}), 404
     
-    new_maintenance = MaintenanceModel(
-        truck_id=truck_id,
-        component=component_name,
-        maintenance_interval=maintenance_interval,
-        accumulated_km=0,
-        last_maintenance_mileage=0, 
-        next_maintenance_mileage=maintenance_interval,
-        status='Pending',
-    )
+    return jsonify({'component': component.to_json()}), 200
+    
 
 @maintenance.route('/<int:truck_id>/components', methods=['GET'])
 @jwt_required()
@@ -128,15 +120,22 @@ def approve_maintenance(id):
     approval_status = data.get('approval_status')
     if approval_status is None:
         return jsonify({'error': 'Approval status is required'}), 400
-    
-    if approval_status == 'Approved':
-        maintenance.status = 'Completed'
-        truck = maintenance.truck
-        truck.update_component(maintenance.component, 'Excelent')
-    
-    elif approval_status == 'Rejected': 
-        maintenance.status = 'Rejected'
+    try:
+        if approval_status == 'Approved':
+            maintenance.status = 'Completed'
+            truck = maintenance.truck
+            truck.update_component(maintenance.component, 'Excelent')
+        
+        elif approval_status == 'Rejected': 
+            maintenance.status = 'Rejected'
 
-    db.session.commit()
+        db.session.commit()
 
-    return jsonify({'message': 'Maintenance status updated', 'status': maintenance.status}), 200
+        if approval_status == 'Approved':
+            FleetAnalyticsModel.update_fleet_analytics(truck.owner_id)
+
+        return jsonify({'message': 'Maintenance status updated', 'status': maintenance.status}), 200
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': 'Error updating maintenance status', 'error': str(e)}), 500

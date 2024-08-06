@@ -1,7 +1,7 @@
 from flask_restful import Resource
 from flask import request, jsonify, Blueprint
 from .. import db
-from ..models import TripModel, TruckModel, FleetAnalyticsModel
+from ..models import TripModel, TruckModel, FleetAnalyticsModel, UserModel
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from ..utils.decorators import role_required
 from app.google.locations import GoogleGetLocation
@@ -24,8 +24,11 @@ def create_trip():
 
 
     truck = TruckModel.query.get(truck_id)
+    driver = UserModel.query.get(trip_json.get('driver_id'))
     if truck is None:
         return jsonify({'error': 'Truck not found'}), 404
+    if driver is None:
+        return jsonify({'error': 'Driver not found'}), 404
     
     fair_components = []
     
@@ -54,6 +57,18 @@ def create_trip():
 
     response = new_trip.to_json()
     response.update(distance_info)
+    response['truck'] = {
+        'brand': truck.brand,
+        'model': truck.model,
+        'year': truck.year,
+        'truck_id': truck.truck_id
+    }
+
+    response['driver'] = {
+        'name': driver.name,
+        'email': driver.email,
+        'phone': driver.phone
+    }
 
     if fair_components:
         response['Warning'] = f'The components {", ".join(fair_components)} are in fair condition'
@@ -68,33 +83,28 @@ def list_trips():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 5, type=int)
 
-    start = (page - 1) * per_page
-    end = start + per_page
+    origin = request.args.get('origin')
+    destination = request.args.get('destination')
+    status = request.args.get('status')
+    driver_id = request.args.get('driver_id', type=int)
 
     trips_query = TripModel.query
-
-    if request.get_json():
-        filters = request.get_json().items()
-        for key, value in filters:
-            if key == 'origin':
-                trips_query = trips_query.filter(TripModel.origin.like(f'%{value}%'))
-            elif key == 'destination':
-                trips_query = trips_query.filter(TripModel.destination.like(f'%{value}%'))
-            elif key == 'status':
-                trips_query = trips_query.filter(TripModel.status.like(f'%{value}%'))
-            elif key == 'driver_id':
-                trips_query = trips_query.filter(TripModel.driver_id == value)
+    if origin:
+        trips_query = trips_query.filter(TripModel.origin.like(f'%{origin}'))
+    if destination:
+        trips_query = trips_query.filter(TripModel.origin.like(f'%{destination}'))
+    if status:
+        trips_query = trips_query.filter(TripModel.origin.like(f'%{status}'))
+    if driver_id:
+        trips_query = trips_query.filter(TripModel.driver_id == driver_id)
     
-    trips = trips_query.slice(start, end).all()
-
+    trips = trips_query.slice((page - 1) * per_page, page * per_page).all()
     total_trips = trips_query.count()
-
-    total_pages = (total_trips - 1) // per_page + 1
 
     return jsonify({
         'trips': [trip.to_json() for trip in trips],
         'total': total_trips,
-        'pages': total_pages,
+        'pages': (total_trips -1) // per_page + 1,
         'page': page
     }), 200
 
@@ -104,45 +114,50 @@ def list_trips():
 @role_required(['owner'])
 def view_trip(id):
     trip = db.session.query(TripModel).get_or_404(id)
-    trip_data = trip.to_json()
-    google_location = GoogleGetLocation()
-    distance_info = asyncio.run(google_location.get_distance(trip.origin, trip.destination))
+    driver = db.session.query(UserModel).get(trip.driver_id)
+    truck = db.session.query(TruckModel).get(trip.truck_id)
 
-    #si el estado es pending se agrega la distancia y la duracion
+    trip_data = {
+        'id': trip.id,
+        'origin': trip.origin,
+        'destination': trip.destination,
+        'status': trip.status,
+        'updated_at': trip.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
+        'driver': driver.name if driver else 'No driver assigned',
+        'truck_details': f'Brand: {truck.brand} Model: {truck.model} {truck.year} ID:{truck.truck_id}' if truck else 'No truck assigned',
+    }
+
     if trip.status == 'Pending':
-        trip_data.update(distance_info) 
-    #si el estado es completed se dice solamente el origen y destino del viaje
-    elif trip.status == 'Completed':
-        trip_data = {
-            'origin': trip.origin,
-            'destination': trip.destination,
-            'status trip': trip.status,
-            'updated_at': trip.updated_at,
-            'driver_id': trip.driver_id,
-            'truck_id': trip.truck_id
-        }
+        google_location = GoogleGetLocation()
+        distance_info = asyncio.run(google_location.get_distance(trip.origin, trip.destination))
+        trip_data.update(distance_info)
+
     return jsonify({'trip': trip_data}), 200
 
 
 
-
-@trips.route('/<int:id>/update', methods=['PATCH']) 
+@trips.route('/<int:id>/update', methods=['PATCH'])
 @jwt_required()
-#solo el owner o el driver con el id del driver pueden editar el viaje
-@role_required(['owner'])
+@role_required(['owner', 'driver'])  #ambos roles pueden actualizar
 def update_trip(id):
     trip = db.session.query(TripModel).get_or_404(id)
     trip_json = request.get_json()
 
-    trip.origin = trip_json.get('origin', trip.origin)
-    trip.destination = trip_json.get('destination', trip.destination)
-    trip.status = trip_json.get('status trip', trip.status)
-    trip.driver_id = trip_json.get('driver_id', trip.driver_id)
-    trip.truck_id = trip_json.get('truck_id', trip.truck_id)
+    new_status = trip_json.get('status') 
 
-    db.session.commit()
 
-    return jsonify({'message': 'Trip updated', 'trip': trip.to_json()}), 200
+    if new_status not in ['Pending', 'In Course', 'Completed']:
+        return jsonify({'message': 'Invalid status value'}), 400
+
+    trip.status = new_status  # Actualizando el estado.
+
+    try:
+        db.session.commit() 
+        return jsonify({'message': 'Trip updated', 'trip': trip.to_json()}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': 'Error updating the trip', 'error': str(e)}), 500
+    
 
     
 
@@ -172,6 +187,8 @@ def complete_trip(id):
         remaining_km = truck.calculate_remaining_km_until_services()
     
         truck.check_maintenance()
+
+        trip.status = 'Completed'
 
         db.session.commit()
 

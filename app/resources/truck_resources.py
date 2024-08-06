@@ -218,3 +218,20 @@ def assign_truck(id):
         return jsonify({'message': 'Error assigning truck', 'error': str(e)}), 500
 
     
+@trucks.route('/drivers_without_truck', methods=['GET'])
+@jwt_required()
+@role_required(['owner']) 
+def get_drivers_without_truck():
+    drivers = UserModel.query.filter_by(rol='driver').all()
+    drivers_without_truck = []
+    for driver in drivers:
+        truck = TruckModel.query.filter_by(driver_id=driver.id).first()
+        if not truck: 
+            drivers_without_truck.append({
+                'id': driver.id,
+                'name': driver.name,
+                'surname': driver.surname,
+                'phone': driver.phone,
+                'role': driver.rol
+            })
+    return jsonify({'drivers': drivers_without_truck}), 200

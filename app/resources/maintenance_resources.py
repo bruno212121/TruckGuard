@@ -15,33 +15,34 @@ maintenance = Blueprint('maintenance', __name__, url_prefix='/maintenance')
 @role_required(['owner', 'driver'])
 def create_maintenance():
     data = request.get_json()
-    new_maintenance = MaintenanceModel(
-        description=data.get('description', ''),
-        component=data.get('component', ''),
-        truck_id=data.get('truck_id', ''),
-        driver_id=data.get('driver_id', ''),
-        cost=data.get('cost', ''),
-        status='Pending',
-        mileage_interval=data.get('mileage_interval', 10000),  
-        last_maintenance_mileage=0,  
-        next_maintenance_mileage=data.get('next_maintenance_mileage', data.get('mileage_interval', 10000)),  
-        accumulated_km=0,
-        maintenance_interval=data.get('maintenance_interval', 10000)  
-    )
-    
-    maintenance.created_at = datetime.now()
-    maintenance.updated_at = datetime.now()
- 
-    db.session.add(new_maintenance)
-    db.session.commit()
+    try:
+        new_maintenance = MaintenanceModel(
+            description=data.get('description', ''),
+            component=data.get('component', ''),
+            truck_id=data.get('truck_id', ''),
+            driver_id=data.get('driver_id', None),  # Asegurar que se maneje el driver_id correctamente
+            cost=data.get('cost', ''),
+            status='Pending',
+            mileage_interval=data.get('mileage_interval', 10000),
+            last_maintenance_mileage=0,
+            next_maintenance_mileage=data.get('next_maintenance_mileage', data.get('mileage_interval', 10000)),
+            maintenance_interval=data.get('maintenance_interval', 10000)
+        )
+        
+        new_maintenance.created_at = datetime.now()
+        new_maintenance.updated_at = datetime.now()
 
+        db.session.add(new_maintenance)
+        db.session.commit()
 
-    truck = TruckModel.query.get(data['truck_id'])
-    if truck:
-        FleetAnalyticsModel.update_fleet_analytics(truck.owner_id)
+        truck = TruckModel.query.get(data['truck_id'])
+        if truck:
+            FleetAnalyticsModel.update_fleet_analytics(truck.owner_id)
 
-
-    return jsonify({'message': 'Maintenance created', 'component': new_maintenance.component}), 201
+        return jsonify({'message': 'Maintenance created', 'component': new_maintenance.component}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': 'Error creating maintenance', 'error': str(e)}), 500
 
 
 # #no va creo ya con el nuevo de truckid te muestra los componentes de cada camion para areglar

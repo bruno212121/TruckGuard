@@ -17,10 +17,10 @@ class Maintenance(db.Model):
     maintenance_interval = db.Column(db.Integer, nullable=False)
     
     truck_id = db.Column(db.Integer, db.ForeignKey('truck.truck_id'), nullable=False)
-    driver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    driver_id = db.Column(db.Integer, db.ForeignKey('user.id', use_alter=True), nullable=True)
 
-    truck = db.relationship('Truck', back_populates='maintenances', uselist=False, single_parent=True)
-    fleetanalytics = db.relationship('FleetAnalytics', back_populates='maintenance', cascade='all, delete-orphan')
+    truck = db.relationship('Truck', back_populates='maintenances', uselist=False)
+    fleetanalytics = db.relationship('FleetAnalytics', back_populates='maintenance')
 
     def __init__(self, description, status, component, cost, mileage_interval, last_maintenance_mileage, next_maintenance_mileage, truck_id, driver_id, maintenance_interval):
         self.description = description

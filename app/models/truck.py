@@ -17,14 +17,14 @@ class Truck(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now(), nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.now(), nullable=False)
     owner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    fleetanalytics_id = db.Column(db.Integer, db.ForeignKey('fleet_analytics.id'), nullable=False)
+    fleetanalytics_id = db.Column(db.Integer, db.ForeignKey('fleet_analytics.id'), nullable=True)
     driver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  
 
     owner = db.relationship('User', foreign_keys=[owner_id], back_populates='trucks_as_owner', uselist=False, single_parent=True)
     driver = db.relationship('User', foreign_keys=[driver_id], back_populates='trucks_as_driver', uselist=False, cascade="all, delete-orphan", single_parent=True)
     trip = db.relationship('Trip', back_populates='truck', uselist=False, cascade="all, delete-orphan", single_parent=True)
     maintenances = db.relationship('Maintenance', back_populates='truck', cascade="all,delete-orphan")
-    fleetanalytics = db.relationship('FleetAnalytics', back_populates='trucks', uselist=False, single_parent=True)
+    fleetanalytics = db.relationship('FleetAnalytics', back_populates='trucks', uselist=False)
 
 
 

@@ -1,3 +1,4 @@
+
 #!/bin/bash
 python3 -m venv .venv #Crear entorno virtual en la carpeta actual
 source .venv/bin/activate #Activar entorno virtual

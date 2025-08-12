@@ -1,7 +1,7 @@
-from flask_restful import Resource 
+from flask_restx import Resource 
 from flask import request, jsonify
 from .. import db
-from ..models import UserModel
+from ..models.user import User as UserModel
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 

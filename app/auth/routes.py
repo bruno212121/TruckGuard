@@ -1,7 +1,7 @@
 from flask import request, jsonify, Blueprint
 from flask_jwt_extended import create_access_token
 from .. import db 
-from ..models import UserModel
+from ..models.user import User as UserModel
 from ..mail.functions import sendMail
 
 

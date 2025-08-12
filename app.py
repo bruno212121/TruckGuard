@@ -12,4 +12,5 @@ with app.app_context():
     db.create_all()
 
 if __name__ == '__main__':
-    app.run(debug=True, port=os.getenv('PORT'))
+    port = int(os.getenv('PORT', 8000))  # Usa el puerto definido en .env o 5000 por defecto
+    app.run(host='0.0.0.0', port=port, debug=True)

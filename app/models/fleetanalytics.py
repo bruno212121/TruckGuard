@@ -17,14 +17,14 @@ class FleetAnalytics(db.Model):
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     updated_at = db.Column(db.DateTime, server_default=db.func.now(), server_onupdate=db.func.now())
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    maintenace_id = db.Column(db.Integer, db.ForeignKey('maintenance.id'), nullable=False)
+    maintenance_id = db.Column(db.Integer, db.ForeignKey('maintenance.id'), nullable=True)
 
-    maintenance = db.relationship('Maintenance', back_populates='fleetanalytics', uselist=False, single_parent=True)
-    trucks = db.relationship('Truck', back_populates='fleetanalytics', cascade="all, delete-orphan")
+    maintenance = db.relationship('Maintenance', back_populates='fleetanalytics', uselist=False)
+    trucks = db.relationship('Truck', back_populates='fleetanalytics')
 
-    def __init__(self, user_id, maintenace_id):
+    def __init__(self, user_id, maintenance_id):
         self.user_id = user_id
-        self.maintenace_id = maintenace_id
+        self.maintenance_id = maintenance_id
 
     def __repr__(self):
         return f'<FleetAnalytics: {self.id} {self.date} {self.total_trips} {self.total_maintenance} {self.total_drivers} {self.total_trucks} {self.created_at} {self.updated_at}>'
@@ -41,14 +41,14 @@ class FleetAnalytics(db.Model):
             'created_at': self.created_at,
             'updated_at': self.updated_at,
             'user_id': self.user_id,
-            'maintenace_id': self.maintenace_id,
+            'maintenance_id': self.maintenance_id,
         }
 
     @staticmethod
     def from_json(fleet_analytics_json):
         return FleetAnalytics(
             user_id=fleet_analytics_json.get('user_id'),
-            maintenace_id=fleet_analytics_json.get('maintenace_id')
+            maintenance_id=fleet_analytics_json.get('maintenance_id')
         )
 
     @staticmethod
@@ -77,7 +77,7 @@ class FleetAnalytics(db.Model):
             db.session.add(default_maintenance)
             db.session.flush()
             
-            fleet_analytics = FleetAnalytics(user_id=user_id, maintenace_id=default_maintenance.id)
+            fleet_analytics = FleetAnalytics(user_id=user_id, maintenance_id=default_maintenance.id)
             db.session.add(fleet_analytics)
         
         try:

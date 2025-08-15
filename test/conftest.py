@@ -12,13 +12,8 @@ def app():
     # Configurar variables de entorno para pruebas
     os.environ['TESTING'] = 'True'
     
+    # Crear la aplicación
     app = create_app()
-    app.config.update({
-        'TESTING': True,
-        'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
-        'SQLALCHEMY_TRACK_MODIFICATIONS': False,
-        'JWT_SECRET_KEY': 'testing-secret-key',
-    })
     
     # Limpiar endpoints existentes para evitar conflictos
     if hasattr(app, 'view_functions'):
@@ -30,7 +25,7 @@ def app():
         db.session.remove() # Limpiar la sesión después de cada prueba
         db.drop_all() # Limpiar la base de datos después de cada prueba
 
-"# Criente de prueba para peticiones http"
+"# Cliente de prueba para peticiones http"
 @pytest.fixture
 def client(app):
     return app.test_client()
@@ -52,10 +47,9 @@ def auth_headers(app):
         db.session.add(owner)
         db.session.commit()
 
-        # Crear token usando el email como identidad
+        # Crear token usando el ID como identidad
         access_token = create_access_token(
-            identity=owner.email,
-            additional_claims={'rol': 'owner'}
+            identity=str(owner.id)
         )
         
         return {

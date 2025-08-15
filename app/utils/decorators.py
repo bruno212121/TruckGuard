@@ -2,7 +2,8 @@ from functools import wraps
 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity, get_jwt
 from sqlalchemy import or_
 from ..models import UserModel
-from .. import db  # Asegúrate de importar la instancia de SQLAlchemy
+from .. import db
+from werkzeug.exceptions import HTTPException
 
 def role_required(roles):
     def decorator(func):
@@ -10,21 +11,30 @@ def role_required(roles):
         def wrapper(*args, **kwargs):
             try:
                 verify_jwt_in_request()
-                jwt = get_jwt()
+                current_user_id = get_jwt_identity()
                 
-                # Verificar el rol en los claims del token
+                # Convertir la identidad a entero si es string
+                if isinstance(current_user_id, str):
+                    current_user_id = int(current_user_id)
+                
+                # Obtener el usuario de la base de datos
+                user = UserModel.query.get(current_user_id)
+                if not user:
+                    return {"msg": "Usuario no encontrado"}, 404
+                
+                # Verificar el rol del usuario
                 if not isinstance(roles, list):
                     roles_list = [roles]
                 else:
                     roles_list = roles
                 
-                if 'rol' not in jwt:
-                    return {"msg": "Rol no especificado en el token"}, 403
-                    
-                if jwt['rol'] not in roles_list:
-                    return {"msg": f"Rol {jwt['rol']} no autorizado. Roles permitidos: {roles_list}"}, 403
+                if user.rol not in roles_list:
+                    return {"msg": f"Rol {user.rol} no autorizado. Roles permitidos: {roles_list}"}, 403
                 
                 return func(*args, **kwargs)
+            except HTTPException:
+                # Re-lanzar excepciones HTTP (como 404) sin modificarlas
+                raise
             except Exception as e:
                 return {"msg": f"Error de autenticación: {str(e)}"}, 401
         return wrapper

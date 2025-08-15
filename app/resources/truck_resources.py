@@ -108,6 +108,10 @@ def view_truck(id):
     current_user_id = get_jwt_identity()
     truck = db.session.query(TruckModel).get_or_404(id)
 
+    # Convertir current_user_id a entero para comparar correctamente
+    if isinstance(current_user_id, str):
+        current_user_id = int(current_user_id)
+
     # Comprobar si el usuario actual es el dueño o el chofer del camión
     if truck.owner_id != current_user_id and truck.driver_id != current_user_id:
         return jsonify({'message': 'Unauthorized'}), 403

@@ -37,7 +37,16 @@ def login():
 @auth.route('/register', methods=['POST'])
 def register():
     try:
-        user = UserModel.from_json(request.get_json())
+        # Normalizar el rol antes de crear el usuario
+        data = request.get_json()
+        
+        # Asegurar que el rol esté en minúsculas y sin espacios
+        if 'role' in data:
+            data['role'] = data['role'].lower().strip()
+        elif 'rol' in data:
+            data['rol'] = data['rol'].lower().strip()
+        
+        user = UserModel.from_json(data)
 
         existing_user = db.session.query(UserModel).filter_by(email=user.email).first()
         if existing_user:

@@ -55,7 +55,12 @@ class User(db.Model):
         surname = user_json.get('surname')
         email = user_json.get('email')
         password = user_json.get('password')
-        rol = user_json.get('rol')
+        
+        # Normalizar el rol: aceptar tanto 'role' como 'rol', convertir a minúsculas y limpiar espacios
+        rol = user_json.get('rol') or user_json.get('role')
+        if rol:
+            rol = rol.lower().strip()
+        
         phone = user_json.get('phone')
         status = user_json.get('status')
         return User(id=id, 

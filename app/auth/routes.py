@@ -3,6 +3,8 @@ from flask_jwt_extended import create_access_token
 from .. import db 
 from ..models.user import User as UserModel
 from ..mail.functions import sendMail
+from flasgger import swag_from
+from .swagger_specs import LOGIN_SPEC, REGISTER_SPEC
 
 
 # Define the blueprint: 'auth', set its url prefix: app.url/auth
@@ -10,6 +12,7 @@ auth = Blueprint('auth', __name__, url_prefix='/auth')
 
 
 @auth.route('/login', methods=['POST'])
+@swag_from(LOGIN_SPEC)
 def login():
     data = request.get_json()
 
@@ -35,12 +38,21 @@ def login():
     
 
 @auth.route('/register', methods=['POST'])
+@swag_from(REGISTER_SPEC)
 def register():
     try:
-        # Normalizar el rol antes de crear el usuario
         data = request.get_json()
         
-        # Asegurar que el rol esté en minúsculas y sin espacios
+        # Verificar si es el primer usuario registrado
+        total_users = db.session.query(UserModel).count()
+        
+        # Si es el primer usuario, asignar rol 'owner', sino 'driver'
+        if total_users == 0:
+            data['rol'] = 'owner'
+        else:
+            data['rol'] = 'driver'
+        
+        # Normalizar el rol antes de crear el usuario
         if 'role' in data:
             data['role'] = data['role'].lower().strip()
         elif 'rol' in data:
@@ -58,7 +70,7 @@ def register():
                 #sent = sendMail([user.email], "Welcome!", 'register', user=user)
             except Exception as error:
                 db.session.rollback()
-                return jsonify({'message': 'Error creating user'}), 500
+                return jsonify({'message': 'Error creating user', 'error': str(error)}), 500
             
             return user.to_json(), 201
     except Exception as error:

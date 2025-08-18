@@ -1,6 +1,6 @@
 import os
 from flask import Flask, Blueprint, request, has_request_context
-from flask_restx import Api  # (no usado con RESTX desactivado, podés quitarlo si querés)
+from flask_restx import Api
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 from flask_jwt_extended import JWTManager
@@ -11,8 +11,12 @@ db = SQLAlchemy()
 jwt = JWTManager()
 mailsender = Mail()
 
+# Create the Flask-RESTX API object
+from app.config.api_config import api
+
 def create_app():
     app = Flask(__name__)
+
     load_dotenv()
 
     # Configuración específica para pruebas
@@ -47,8 +51,8 @@ def create_app():
     mailsender.init_app(app)
 
     # Blueprints clasicos (truck, trip, fleetanalytics, maintenance)
-    from app.auth import routes as auth_routes
-    app.register_blueprint(auth_routes.auth)
+    # from app.auth import routes as auth_routes  # Comentado - usando Flask-RESTX
+    # app.register_blueprint(auth_routes.auth)
 
     from app.resources.truck_resources import trucks
     app.register_blueprint(trucks)
@@ -62,34 +66,33 @@ def create_app():
     from app.resources.maintenance_resources import maintenance
     app.register_blueprint(maintenance)
 
-    # --- RESTX DESACTIVADO TEMPORALMENTE PARA AISLAR TESTS DE AUTH ---
-    # from flask_restx import Api
-    # api_bp = Blueprint('api', __name__)
-    # api = Api(api_bp, doc='/docs', title='TruckGuard API')
-    # from app.resources.user_resources import User, Users
-    # api.add_resource(User, '/user/<int:id>', endpoint='user_detail')
-    # api.add_resource(Users, '/users', endpoint='user_list')
-    # app.register_blueprint(api_bp)
+    # Configurar Flask-RESTX API
+    api.init_app(app)
+    
+    # Registrar namespaces de autenticación
+    from app.auth.restx_routes import auth_ns
+    api.add_namespace(auth_ns)
 
     # ===== BEFORE_REQUEST: asegurar mapeo de endpoints de auth en caliente =====
-    @app.before_request
-    def _ensure_auth_endpoints():
-        if request.path.startswith('/auth/'):
-            # Traemos las funciones reales del blueprint (no crea rutas nuevas)
-            try:
-                from app.auth.routes import register as reg_fn, login as log_fn
-            except Exception:
-                reg_fn = log_fn = None
+    # Comentado - usando Flask-RESTX que maneja esto automáticamente
+    # @app.before_request
+    # def _ensure_auth_endpoints():
+    #     if request.path.startswith('/auth/'):
+    #         # Traemos las funciones reales del blueprint (no crea rutas nuevas)
+    #         try:
+    #             from app.auth.routes import register as reg_fn, login as log_fn
+    #         except Exception:
+    #             reg_fn = log_fn = None
 
-            if reg_fn and 'auth.register' not in app.view_functions:
-                app.view_functions['auth.register'] = reg_fn
+    #         if reg_fn and 'auth.register' not in app.view_functions:
+    #             app.view_functions['auth.register'] = reg_fn
 
-            if log_fn and 'auth.login' not in app.view_functions:
-                app.view_functions['auth.login'] = log_fn
+    #         if log_fn and 'auth.login' not in app.view_functions:
+    #             app.view_functions['auth.login'] = log_fn
 
-    # Estas asserts validan en setup (crear app). Si te molestan, podés comentarlas.
-    assert 'auth.register' in app.view_functions, f"Falta endpoint 'auth.register'."
-    assert 'auth.login' in app.view_functions, f"Falta endpoint 'auth.login'."
+    # # Estas asserts validan en setup (crear app). Si te molestan, podés comentarlas.
+    # assert 'auth.register' in app.view_functions, f"Falta endpoint 'auth.register'."
+    # assert 'auth.login' in app.view_functions, f"Falta endpoint 'auth.login'."
 
     # ===== BEFORE_REQUEST: asegurar mapeo de endpoints de trucks =====
     @app.before_request

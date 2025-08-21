@@ -1,16 +1,16 @@
 """
-Modelos Flask-RESTX para autenticación
+Modelos Swagger para el recurso de autenticación
 """
 from flask_restx import fields
 from app.config.api_config import api
 
 # Namespace para autenticación
-auth_ns = api.namespace('auth', description='Operaciones de autenticación')
+auth_ns = api.namespace('Auth', description='Operaciones de autenticación')
 
 # Modelos de entrada
 login_model = api.model('Login', {
-    'email': fields.String(required=True, description='Email del usuario', example='usuario@ejemplo.com'),
-    'password': fields.String(required=True, description='Contraseña del usuario', example='miContraseña123')
+    'email': fields.String(required=True, description='Email del usuario', example='brunonicorc@hotmail.com'),
+    'password': fields.String(required=True, description='Contraseña del usuario', example='1234')
 })
 
 register_model = api.model('Register', {
@@ -41,4 +41,14 @@ user_model = api.model('User', {
 error_model = api.model('Error', {
     'message': fields.String(description='Mensaje de error'),
     'error': fields.String(description='Detalles del error', required=False)
+})
+
+# Modelos adicionales para respuestas específicas
+register_response_model = api.model('RegisterResponse', {
+    'message': fields.String(description='Mensaje de confirmación'),
+    'user': fields.Nested(user_model, description='Información del usuario registrado')
+})
+
+success_message_model = api.model('SuccessMessage', {
+    'message': fields.String(description='Mensaje de confirmación')
 })

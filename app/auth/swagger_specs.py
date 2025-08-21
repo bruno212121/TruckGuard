@@ -18,7 +18,7 @@ LOGIN_SPEC = {
                         "type": "string",
                         "format": "email",
                         "description": "Email del usuario",
-                        "example": "usuario@ejemplo.com"
+                        "example": "juan.perez@ejemplo.com"
                     },
                     "password": {
                         "type": "string",

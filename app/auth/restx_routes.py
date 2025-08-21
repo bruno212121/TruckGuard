@@ -6,7 +6,7 @@ from flask_restx import Resource
 from flask_jwt_extended import create_access_token
 from .. import db
 from ..models.user import User as UserModel
-from .models import auth_ns, login_model, register_model, login_response_model, user_model, error_model
+from ..swagger_models.auth_models import auth_ns, login_model, register_model, login_response_model, user_model, error_model
 
 
 @auth_ns.route('/login')
@@ -31,7 +31,7 @@ class Login(Resource):
         if not user.validate_password(data.get('password')):
             auth_ns.abort(401, message='Incorrect password')
         
-        access_token = create_access_token(identity=user.id)
+        access_token = create_access_token(identity=str(user.id))
 
         response = {   
             'id': user.id,

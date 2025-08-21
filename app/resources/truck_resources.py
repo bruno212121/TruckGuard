@@ -1,4 +1,6 @@
 from flask import request, jsonify, Blueprint
+from flask_restx import Resource
+from app.config.swagger_config import create_truck_model, truck_list_model, truck_detail_model, edit_truck_model, assign_truck_model, drivers_list_model, success_message_model, assign_truck_response_model
 from .. import db
 from ..models import TruckModel, MaintenanceModel, FleetAnalyticsModel, UserModel
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
@@ -13,6 +15,7 @@ trucks = Blueprint('trucks', __name__, url_prefix='/trucks')
 #create truck
 @trucks.route('/new', methods=['POST'])
 @jwt_required()
+@trucks.expect(create_truck_model)
 @role_required(['owner'])
 def create_truck():
     current_user = get_jwt_identity()
@@ -72,6 +75,7 @@ def create_truck():
 #listar todos los camiones
 @trucks.route('/all', methods=['GET'])
 @jwt_required()
+@trucks.response(200, 'Lista de camiones obtenida exitosamente', truck_list_model)
 @role_required(['owner'])
 def list_trucks():
     trucks = db.session.query(TruckModel).all()
@@ -103,6 +107,7 @@ def list_trucks():
 
 @trucks.route('/<int:id>', methods=['GET'])
 @jwt_required()
+@trucks.response(200, 'Detalles del camión obtenidos exitosamente', truck_detail_model)
 @role_required(['owner'])
 def view_truck(id):
     current_user_id = get_jwt_identity()
@@ -154,6 +159,11 @@ def view_truck(id):
 
 @trucks.route('/<int:id>/edit', methods=['PUT'])
 @jwt_required()
+@trucks.expect(edit_truck_model)
+@trucks.response(200, 'Camión actualizado exitosamente', success_message_model)
+@trucks.response(400, 'Datos inválidos')
+@trucks.response(403, 'No autorizado')
+@trucks.response(404, 'Camión no encontrado')
 @role_required(['owner'])
 def edit_truck(id):
     truck = db.session.query(TruckModel).get_or_404(id)
@@ -189,6 +199,12 @@ def delete_truck(id):
 
 @trucks.route('/<int:id>/assign', methods=['PUT'])
 @jwt_required()
+@trucks.expect(assign_truck_model)
+@trucks.response(200, 'Camión asignado exitosamente', assign_truck_response_model)
+@trucks.response(400, 'Datos inválidos')
+@trucks.response(403, 'No autorizado')
+@trucks.response(404, 'Camión no encontrado')
+@trucks.response(500, 'Error interno del servidor')
 @role_required(['owner'])
 def assign_truck(id):
     try:
@@ -221,9 +237,13 @@ def assign_truck(id):
         db.session.rollback()
         return jsonify({'message': 'Error assigning truck', 'error': str(e)}), 500
 
-    
+
+
 @trucks.route('/drivers_without_truck', methods=['GET'])
 @jwt_required()
+@trucks.response(200, 'Conductores sin camión obtenidos exitosamente', drivers_list_model)
+@trucks.response(403, 'No autorizado')
+@trucks.response(500, 'Error interno del servidor')
 @role_required(['owner']) 
 def get_drivers_without_truck():
     drivers = UserModel.query.filter_by(rol='driver').all()

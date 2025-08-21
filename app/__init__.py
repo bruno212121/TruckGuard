@@ -26,19 +26,44 @@ def create_app():
         # Usar clave fija para tests
         app.config['JWT_SECRET_KEY'] = 'testing-secret-key-for-tests-only'
     else:
-        if not os.path.exists(os.getenv('DATABASE_PATH') + os.getenv('DATABASE_NAME')):  # Check if the database exists
-            os.mknod(os.getenv('DATABASE_PATH') + os.getenv('DATABASE_NAME'))
+        # Construir la ruta de la base de datos correctamente
+        db_path = os.getenv('DATABASE_PATH')
+        db_name = os.getenv('DATABASE_NAME')
+        full_db_path = os.path.join(db_path, db_name)
+        
+        # Crear el directorio si no existe
+        os.makedirs(db_path, exist_ok=True)
+        
+        # Crear el archivo de base de datos si no existe (compatible con Windows)
+        if not os.path.exists(full_db_path):
+            try:
+                with open(full_db_path, 'w') as f:
+                    pass  # Crear archivo vacío
+            except Exception as e:
+                print(f"Error creando archivo de base de datos: {e}")
 
         app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # Disable the modification tracker
-        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.getenv('DATABASE_PATH') + os.getenv('DATABASE_NAME')
-        # Usar clave aleatoria para producción
-        secret_key = os.urandom(32)
-        app.config['JWT_SECRET_KEY'] = secret_key.hex()
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.abspath(full_db_path)
+        
+        # Configuración de JWT con clave secreta fija
+        jwt_secret_key = os.getenv('JWT_SECRET_KEY')
+        if not jwt_secret_key:
+            # Si no hay clave en .env, generar una y mostrar advertencia
+            import secrets
+            jwt_secret_key = secrets.token_hex(32)
+            print(f"⚠️  ADVERTENCIA: JWT_SECRET_KEY no configurada en .env. Usando clave generada: {jwt_secret_key}")
+            print("   Para producción, configura JWT_SECRET_KEY en tu archivo .env")
+        
+        app.config['JWT_SECRET_KEY'] = jwt_secret_key
 
     db.init_app(app)
 
     # --- JWT ---
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES', '3600'))
+    # Configuraciones adicionales de JWT para mayor seguridad
+    app.config['JWT_TOKEN_LOCATION'] = ['headers']
+    app.config['JWT_HEADER_NAME'] = 'Authorization'
+    app.config['JWT_HEADER_TYPE'] = 'Bearer'
     jwt.init_app(app)
 
     # --- MAIL ---
@@ -54,17 +79,17 @@ def create_app():
     # from app.auth import routes as auth_routes  # Comentado - usando Flask-RESTX
     # app.register_blueprint(auth_routes.auth)
 
-    from app.resources.truck_resources import trucks
-    app.register_blueprint(trucks)
+    # from app.resources.truck_resources import trucks  # Comentado - usando Flask-RESTX
+    # app.register_blueprint(trucks)
 
-    from app.resources.trip_resources import trips
-    app.register_blueprint(trips)
+    # from app.resources.trip_resources import trips
+    # app.register_blueprint(trips)
 
-    from app.resources.fleetanalytics_resources import fleet
-    app.register_blueprint(fleet)
+    # from app.resources.fleetanalytics_resources import fleet  # Comentado - usando Flask-RESTX
+    # app.register_blueprint(fleet)
 
-    from app.resources.maintenance_resources import maintenance
-    app.register_blueprint(maintenance)
+    # from app.resources.maintenance_resources import maintenance  # Comentado - usando Flask-RESTX
+    # app.register_blueprint(maintenance)
 
     # Configurar Flask-RESTX API
     api.init_app(app)
@@ -72,6 +97,22 @@ def create_app():
     # Registrar namespaces de autenticación
     from app.auth.restx_routes import auth_ns
     api.add_namespace(auth_ns)
+    
+    # Registrar namespaces de trucks
+    from app.resources.truck_restx_routes import truck_ns
+    api.add_namespace(truck_ns)
+    
+    # Registrar namespaces de trips
+    from app.resources.trip_restx_routes import trip_ns
+    api.add_namespace(trip_ns)
+    
+    # Registrar namespaces de maintenance
+    from app.resources.maintenance_restx_routes import maintenance_ns
+    api.add_namespace(maintenance_ns)
+    
+    # Registrar namespaces de fleetanalytics
+    from app.resources.fleetanalytics_restx_routes import fleet_ns
+    api.add_namespace(fleet_ns)
 
     # ===== BEFORE_REQUEST: asegurar mapeo de endpoints de auth en caliente =====
     # Comentado - usando Flask-RESTX que maneja esto automáticamente

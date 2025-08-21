@@ -1,15 +1,16 @@
 #Puerto
-PORT =
+PORT = 8000
 
 #Configuracion de la Base de Datos
-DATABASE_PATH = '/path/to/database/'
-DATABASE_NAME = 'name.db'
+DATABASE_PATH = './database/'
+DATABASE_NAME = 'truckguard.db'
 
 #Configuracion de la API URL
-API_URL = ''
+API_URL = 'http://localhost:8000'
 
 #Configuracion de JWT
-JWT_ACCESS_TOKEN_EXPIRES =
+JWT_SECRET_KEY = a-string-secret-at-least-256-bits-long
+JWT_ACCESS_TOKEN_EXPIRES = 3600
 
 #Configuracion de Email
 MAIL_HOSTNAME = 
@@ -19,7 +20,6 @@ MAIL_USE_TLS =
 MAIL_USERNAME = 
 MAIL_PASSWORD = 
 FLASKY_MAIL_SENDER = 
-
 
 #serivicio de google
 API_KEY= key

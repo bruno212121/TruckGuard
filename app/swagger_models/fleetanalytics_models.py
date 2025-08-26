@@ -103,6 +103,55 @@ fleet_stats_model = api.model('FleetStats', {
     'most_active_fleet': fields.Integer(description='ID de la flota más activa')
 })
 
+# Modelo para camiones asignados a drivers
+assigned_truck_model = api.model('AssignedTruck', {
+    'truck_id': fields.Integer(description='ID del camión'),
+    'plate': fields.String(description='Matrícula del camión'),
+    'model': fields.String(description='Modelo del camión'),
+    'brand': fields.String(description='Marca del camión'),
+    'year': fields.Integer(description='Año del camión'),
+    'color': fields.String(description='Color del camión'),
+    'mileage': fields.Integer(description='Kilometraje actual'),
+    'health_status': fields.String(description='Estado de salud del camión'),
+    'pending_maintenance_count': fields.Integer(description='Cantidad de mantenimientos pendientes'),
+    'critical_maintenance_count': fields.Integer(description='Cantidad de mantenimientos críticos'),
+    'assigned_date': fields.String(description='Fecha de asignación')
+})
+
+driver_assigned_trucks_response_model = api.model('DriverAssignedTrucksResponse', {
+    'message': fields.String(description='Mensaje de respuesta'),
+    'assigned_trucks': fields.List(fields.Nested(assigned_truck_model), description='Lista de camiones asignados'),
+    'total_assigned': fields.Integer(description='Total de camiones asignados'),
+    'driver_id': fields.Integer(description='ID del driver')
+})
+
+# Modelos para alertas de mantenimiento
+maintenance_alert_model = api.model('MaintenanceAlert', {
+    'truck_id': fields.Integer(description='ID del camión'),
+    'plate': fields.String(description='Matrícula del camión'),
+    'component': fields.String(description='Componente que necesita mantenimiento'),
+    'km_remaining': fields.Integer(description='Kilómetros restantes hasta el mantenimiento'),
+    'next_maintenance_mileage': fields.Integer(description='Próximo kilometraje de mantenimiento'),
+    'current_mileage': fields.Integer(description='Kilometraje actual'),
+    'priority': fields.String(description='Prioridad de la alerta', enum=['URGENT', 'UPCOMING', 'CRITICAL']),
+    'estimated_days': fields.Integer(description='Días estimados hasta el mantenimiento'),
+    'status': fields.String(description='Estado del componente (solo para críticos)')
+})
+
+alerts_summary_model = api.model('AlertsSummary', {
+    'total_alerts': fields.Integer(description='Total de alertas'),
+    'urgent_count': fields.Integer(description='Cantidad de alertas urgentes'),
+    'upcoming_count': fields.Integer(description='Cantidad de alertas próximas'),
+    'critical_count': fields.Integer(description='Cantidad de componentes críticos')
+})
+
+maintenance_alerts_response_model = api.model('MaintenanceAlertsResponse', {
+    'urgent_maintenance': fields.List(fields.Nested(maintenance_alert_model), description='Mantenimientos urgentes'),
+    'upcoming_maintenance': fields.List(fields.Nested(maintenance_alert_model), description='Mantenimientos próximos'),
+    'critical_components': fields.List(fields.Nested(maintenance_alert_model), description='Componentes críticos'),
+    'summary': fields.Nested(alerts_summary_model, description='Resumen de alertas')
+})
+
 # Modelos para filtros
 fleet_filter_model = api.model('FleetFilter', {
     'owner_id': fields.Integer(required=False, description='Filtrar por propietario', example=1),

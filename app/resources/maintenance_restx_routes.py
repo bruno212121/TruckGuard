@@ -7,12 +7,25 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from .. import db
 from ..models import MaintenanceModel, TruckModel, FleetAnalyticsModel, UserModel
 from ..utils.decorators import role_required
-from datetime import datetime
+from datetime import datetime, date
 from ..swagger_models.maintenance_models import (
-    maintenance_ns, create_maintenance_model, edit_maintenance_model,
+    maintenance_ns, create_maintenance_model, edit_maintenance_model, approve_maintenance_model,
     maintenance_list_model, maintenance_detail_model, create_maintenance_response_model,
-    success_message_model, maintenance_stats_model
+    success_message_model, maintenance_stats_model, update_status_response_model
 )
+
+
+def serialize_dt(obj):
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        return {k: serialize_dt(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [serialize_dt(x) for x in obj]
+    return obj
+
+
+
 
 
 @maintenance_ns.route('/new')
@@ -27,6 +40,14 @@ class CreateMaintenance(Resource):
         """Crear un nuevo mantenimiento"""
         data = request.get_json()
         try:
+            # Obtener el camión para calcular el kilometraje actual
+            truck = TruckModel.query.get(data.get('truck_id'))
+            if not truck:
+                maintenance_ns.abort(404, message='Truck not found')
+            
+            mileage_interval = data.get('mileage_interval', 10000)
+            current_mileage = truck.mileage
+            
             new_maintenance = MaintenanceModel(
                 description=data.get('description', ''),
                 component=data.get('component', ''),
@@ -34,9 +55,9 @@ class CreateMaintenance(Resource):
                 driver_id=data.get('driver_id', None),
                 cost=data.get('cost', ''),
                 status='Pending',
-                mileage_interval=data.get('mileage_interval', 10000),
-                last_maintenance_mileage=0,
-                next_maintenance_mileage=data.get('next_maintenance_mileage', data.get('mileage_interval', 10000)),
+                mileage_interval=mileage_interval,
+                last_maintenance_mileage=current_mileage,
+                next_maintenance_mileage=current_mileage + mileage_interval,
                 maintenance_interval=data.get('maintenance_interval', 10000)
             )
             
@@ -141,6 +162,10 @@ class ListComponents(Resource):
         truck = TruckModel.query.get_or_404(truck_id)
         components = truck.maintenances
         
+        # Actualizar el estado de todos los componentes antes de devolver la lista
+        for component in components:
+            component.update_status()
+        
         components_list = []
         for component in components:
             driver = db.session.query(UserModel).get(component.driver_id)
@@ -154,8 +179,8 @@ class ListComponents(Resource):
                 'mileage_interval': component.mileage_interval,
                 'last_maintenance_mileage': component.last_maintenance_mileage,
                 'next_maintenance_mileage': component.next_maintenance_mileage,
-                'created_at': component.created_at,
-                'updated_at': component.updated_at,
+                'created_at': serialize_dt(component.created_at),
+                'updated_at': serialize_dt(component.updated_at), 
                 'truck': {
                     'truck_id': truck.truck_id,
                     'plate': truck.plate,
@@ -177,7 +202,7 @@ class ListComponents(Resource):
 
 @maintenance_ns.route('/<int:id>/approve')
 class ApproveMaintenance(Resource):
-    @maintenance_ns.expect(edit_maintenance_model)
+    @maintenance_ns.expect(approve_maintenance_model)
     @maintenance_ns.response(200, 'Estado de mantenimiento actualizado exitosamente')
     @maintenance_ns.response(400, 'Estado de aprobación requerido')
     @maintenance_ns.response(404, 'Mantenimiento no encontrado')
@@ -197,7 +222,11 @@ class ApproveMaintenance(Resource):
             if approval_status == 'Approved':
                 maintenance.status = 'Completed'
                 truck = maintenance.truck
-                truck.update_component(maintenance.component, 'Excelent')
+                # Actualizar el kilometraje del último mantenimiento y el próximo
+                maintenance.last_maintenance_mileage = truck.mileage
+                maintenance.next_maintenance_mileage = truck.mileage + maintenance.mileage_interval
+                maintenance.accumulated_km = 0
+                truck.update_component(maintenance.component, 'Excellent')
             
             elif approval_status == 'Rejected': 
                 maintenance.status = 'Rejected'
@@ -236,3 +265,47 @@ class MaintenanceStats(Resource):
             'total_cost': float(total_cost),
             'average_cost': float(average_cost)
         }, 200
+
+
+@maintenance_ns.route('/<int:truck_id>/update-status')
+class UpdateMaintenanceStatus(Resource):
+    @maintenance_ns.response(200, 'Estados de mantenimiento actualizados exitosamente', update_status_response_model)
+    @maintenance_ns.response(404, 'Camión no encontrado')
+    @jwt_required()
+    @role_required(['owner'])
+    def post(self, truck_id):
+        """
+        Forzar la actualización del estado de todos los componentes de un camión.
+        
+        Esta ruta recalcula automáticamente:
+        - El estado de cada componente basado en el kilometraje actual
+        - El health_status del camión basado en los componentes
+        - Los próximos mantenimientos programados
+        
+        No requiere JSON en el body, solo el truck_id en la URL.
+        Útil para sincronizar datos después de correcciones manuales.
+        """
+        truck = TruckModel.query.get_or_404(truck_id)
+        
+        try:
+            components_count = len(truck.maintenances)
+            
+            # Actualizar el estado de todos los componentes
+            for maintenance in truck.maintenances:
+                maintenance.update_status()
+            
+            # Actualizar el estado de salud del camión
+            truck.update_health_status()
+            
+            db.session.commit()
+            
+            return {
+                'message': 'Maintenance statuses updated successfully',
+                'truck_id': truck_id,
+                'health_status': truck.health_status,
+                'components_updated': components_count
+            }, 200
+            
+        except Exception as e:
+            db.session.rollback()
+            maintenance_ns.abort(500, message='Error updating maintenance statuses', error=str(e))

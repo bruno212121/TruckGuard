@@ -37,5 +37,6 @@ class GoogleGetLocation:
                 distance_text = element["distance"]["text"]
                 duration_text = element["duration"]["text"]
                 return {"distance": distance_text, "duration": duration_text}
+
             return {"error": "could not get distance"}
         

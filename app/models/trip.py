@@ -9,6 +9,7 @@ class Trip(db.Model):
     origin = db.Column(db.String(100), nullable=False)
     destination = db.Column(db.String(100), nullable=False)
     status = db.Column(db.String(100), nullable=False)
+    distance = db.Column(db.Integer, nullable=False, default=0)  # Distancia en kilómetros
     created_at = db.Column(db.DateTime, default=datetime.now(), nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.now(), nullable=False)
     driver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -19,11 +20,12 @@ class Trip(db.Model):
     truck = db.relationship('Truck', back_populates='trip', single_parent=True, cascade="all,delete-orphan")
    
 
-    def __init__(self, date, origin, destination, status, created_at, updated_at, driver_id, truck_id):
+    def __init__(self, date, origin, destination, status, created_at, updated_at, driver_id, truck_id, distance=0):
         self.date = date
         self.origin = origin
         self.destination = destination
         self.status = status
+        self.distance = distance
         self.created_at = created_at
         self.updated_at = updated_at
         self.driver_id = driver_id
@@ -36,6 +38,7 @@ class Trip(db.Model):
             'origin': self.origin,
             'destination': self.destination,
             'status': self.status,
+            'distance': self.distance,
             'created_at': self.created_at,
             'updated_at': self.updated_at,
             'driver_id': self.driver_id,
@@ -50,6 +53,7 @@ class Trip(db.Model):
             'origin': self.origin,
             'destination': self.destination,
             'status': self.status,
+            'distance': self.distance,
             'created_at': self.date.strftime('%Y-%m-%d %H:%M:%S'),
             'updated_at': self.date.strftime('%Y-%m-%d %H:%M:%S'),
             'driver_id': self.driver_id,
@@ -80,3 +84,16 @@ class Trip(db.Model):
                     truck_id=truck_id, 
                     fleet_analyticsId=fleet_analyticsId
                     )
+
+    def complete_trip(self, distance):
+        """Completa un viaje y actualiza el kilometraje del camión y degrada los componentes"""
+        self.status = 'Completed'
+        self.distance = distance
+        self.updated_at = datetime.now()
+        
+        # Actualizar el kilometraje del camión y degradar componentes
+        if self.truck:
+            self.truck.update_mileage(distance)
+        
+        db.session.commit()
+        return self

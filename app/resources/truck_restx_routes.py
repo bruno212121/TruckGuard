@@ -20,7 +20,7 @@ from ..swagger_models.truck_models import (
 @truck_ns.route('/new')
 class CreateTruck(Resource):
     @jwt_required()
-    @role_required(['owner', 'driver'])
+    @role_required(['owner'])
     @truck_ns.expect(create_truck_model)
     @truck_ns.response(201, 'Camión creado exitosamente', create_truck_response_model)
     @truck_ns.response(400, 'Datos inválidos')
@@ -31,14 +31,15 @@ class CreateTruck(Resource):
         data = request.get_json()
         print("data", data)
         
-        if 'driver_id' not in data:
-            truck_ns.abort(400, message='Driver id is required')
+        driver_id = None 
+        if 'driver_id' in data and data['driver_id']:
+            driver_id = data['driver_id']
+            driver = UserModel.query.filter_by(id=driver_id, rol='driver').first()
+            if not driver:
+                truck_ns.abort(400, message='Invalid driver id or the user does not have the driver role') 
         
-        driver_id = data['driver_id'] 
-        driver = UserModel.query.filter_by(id=driver_id, rol='driver').first()
-        if not driver:
-            truck_ns.abort(400, message='Invalid driver id or the user does not have the driver role')
-        
+        fa = FleetAnalyticsModel.get_or_create_for_owner(current_user) 
+
         try:
             new_truck = TruckModel(
                 owner_id=current_user, 
@@ -48,29 +49,52 @@ class CreateTruck(Resource):
                 year=data['year'], 
                 color=data['color'], 
                 mileage=data['mileage'], 
-                health_status=data['health_status'], 
-                fleetanalytics_id=data.get('fleetanalytics_id'),
+                health_status=data.get('health_status', 'Good'), 
+                fleetanalytics_id=fa.id,  
                 driver_id=driver_id
             )
             db.session.add(new_truck)
-            db.session.commit()
+            db.session.flush() 
 
-            components = data.get('components', [
-                {"name": "Filtros", "interval": 10000, "last_replacement": 0, "next_replacement": 10000}, 
-                {"name": "aceite", "interval": 5000, "last_replacement": 0, "next_replacement": 5000}, 
-                {"name": "injecciones", "interval": 8000, "last_replacement": 0, "next_replacement": 8000},
-                {"name": "frenos", "interval": 9500, "last_replacement": 0, "next_replacement": 9500},
-            ])
+            def next_due(current_mileage, interval):
+                return ((current_mileage // interval) + 1) * interval  
+            
+            def last_done(current_mileage, interval):
+                return ((current_mileage // interval) * interval) 
 
-            for component in components: 
-                maintenance = MaintenanceModel(  
+            current_mileage = new_truck.mileage 
+
+            # Componentes por defecto si no se proporcionan
+            default_components = [
+                {"name": "Filtros",     "interval": 10000},
+                {"name": "Aceite",      "interval":  5000},
+                {"name": "Inyecciones", "interval":  8000},
+                {"name": "Frenos",      "interval":  9500},
+            ]
+
+            # Si se proporcionan componentes personalizados, usarlos; si no, usar los por defecto
+            components = data.get('components', default_components)
+
+            for component in components:
+                # Si el componente tiene valores personalizados, usarlos; si no, calcular automáticamente
+                if 'last_maintenance_mileage' in component and 'next_maintenance_mileage' in component:
+                    last_mileage = component['last_maintenance_mileage']
+                    next_mileage = component['next_maintenance_mileage']
+                else:
+                    next_mileage = next_due(current_mileage, component['interval'])
+                    last_mileage = last_done(current_mileage, component['interval'])
+
+                # Estado del componente: personalizado o por defecto
+                component_status = component.get('status', 'Excellent')
+
+                maintenance = MaintenanceModel(
                     description=f'{component["name"]} maintenance', 
-                    status='Excelent', 
+                    status=component_status, 
                     component=component['name'], 
                     cost=0, 
                     mileage_interval=component['interval'],
-                    last_maintenance_mileage=0,
-                    next_maintenance_mileage=component['interval'],
+                    last_maintenance_mileage=last_mileage,
+                    next_maintenance_mileage=next_mileage,
                     truck_id=new_truck.truck_id,
                     driver_id=driver_id,
                     maintenance_interval=component['interval']
@@ -175,20 +199,23 @@ class EditTruck(Resource):
     @jwt_required()
     @role_required(['owner'])
     def put(self, id):
-        """Editar un camión"""
+       
         truck = db.session.query(TruckModel).get_or_404(id)
-        if truck.owner_id != truck.owner_id and truck.driver_id != truck.owner_id:
+
+        current_user_id = str(get_jwt_identity())
+        if str(truck.owner_id) != current_user_id: 
             truck_ns.abort(403, message='Unauthorized')
         
         data = request.get_json()
         if not data:
             truck_ns.abort(400, message='No input data provided')
         
-        truck.status = data.get('status', truck.status)
-        truck.updated_at = datetime.now()
-        truck.created_at = data.get('created_at', truck.created_at)
-        db.session.commit()
+        if 'status' in data:
+            truck.status = data['status']
 
+        truck.updated_at = datetime.utcnow() 
+
+        db.session.commit()
         return {'message': 'Truck updated', 'truck': truck.truck_id}, 200
 
 

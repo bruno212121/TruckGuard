@@ -6,8 +6,8 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     surname = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(100), unique=True, nullable=False)
-    password = db.Column(db.String(128), nullable=False) #password_hash
+    email = db.Column(db.String(200), unique=True, nullable=False)
+    password = db.Column(db.String(1000), nullable=False) #password_hash
     rol = db.Column(db.String(100), nullable=False)
     phone = db.Column(db.String(100))
     status = db.Column(db.String(100), nullable=False, default='active')

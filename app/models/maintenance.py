@@ -68,12 +68,19 @@ class Maintenance(db.Model):
                            status=status)
 
     def update_status(self):
-
+        """Actualiza el estado del componente basado en el kilometraje acumulado"""
         if self.maintenance_interval == 0:
             self.status = 'Excellent'
         else:
-            percentage_components = (self.accumulated_km / self.maintenance_interval) * 100
+            # Calcular el kilometraje acumulado desde el último mantenimiento
+            if hasattr(self, 'truck') and self.truck:
+                current_mileage = self.truck.mileage
+                km_since_last = current_mileage - self.last_maintenance_mileage
+                percentage_components = (km_since_last / self.maintenance_interval) * 100
+            else:
+                percentage_components = (self.accumulated_km / self.maintenance_interval) * 100
 
+            # Degradación basada únicamente en kilómetros recorridos
             if percentage_components >= 100:
                 self.status = 'Maintenance Required'
             elif percentage_components >= 80:
@@ -82,6 +89,8 @@ class Maintenance(db.Model):
                 self.status = 'Good'
             elif percentage_components >= 40:
                 self.status = 'Very Good'
+            elif percentage_components >= 20:
+                self.status = 'Good'
             else:
                 self.status = 'Excellent'
            

@@ -7,17 +7,27 @@ from app.config.api_config import api
 # Namespace para trucks
 truck_ns = api.namespace('Trucks', description='Operaciones de gestión de camiones')
 
+# Modelo para componentes de mantenimiento
+component_model = api.model('Component', {
+    'name': fields.String(required=True, description='Nombre del componente', example='Filtros'),
+    'interval': fields.Integer(required=True, description='Intervalo de mantenimiento en km', example=10000),
+    'status': fields.String(required=False, description='Estado del componente', example='Excellent', enum=['Excellent', 'Good', 'Fair', 'Poor', 'Critical']),
+    'last_maintenance_mileage': fields.Integer(required=False, description='Último kilometraje de mantenimiento', example=40000),
+    'next_maintenance_mileage': fields.Integer(required=False, description='Próximo kilometraje de mantenimiento', example=50000)
+})
+
 # Modelos de entrada
 create_truck_model = api.model('CreateTruck', {
-    'driver_id': fields.Integer(required=True, description='ID del conductor asignado', example=1),
+    'driver_id': fields.Integer(required=False, description='ID del conductor asignado', example=1),
     'plate': fields.String(required=True, description='Matrícula del camión', example='ABC123'),
     'model': fields.String(required=True, description='Modelo del camión', example='FH16'),
     'brand': fields.String(required=True, description='Marca del camión', example='Volvo'),
     'year': fields.Integer(required=True, description='Año del camión', example=2020),
     'color': fields.String(required=True, description='Color del camión', example='Blanco'),
     'mileage': fields.Integer(required=True, description='Kilometraje actual', example=50000),
-    'health_status': fields.String(required=True, description='Estado de salud del camión', example='Excelent'),
-    'fleetanalytics_id': fields.Integer(required=False, description='ID de análisis de flota', example=1)
+    'health_status': fields.String(required=False, description='Estado de salud del camión', example='Excellent'),
+    'fleetanalytics_id': fields.Integer(required=False, description='ID de análisis de flota', example=1),
+    'components': fields.List(fields.Nested(component_model), required=False, description='Lista de componentes con estado personalizado')
 })
 
 edit_truck_model = api.model('EditTruck', {

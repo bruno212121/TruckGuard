@@ -93,8 +93,9 @@ class Truck(db.Model):
                 maintenance.accumulated_km += distance 
                 maintenance.update_status()
                 if maintenance.accumulated_km >= maintenance.maintenance_interval: 
-                    maintenance.accummulated_km = 0 
+                    maintenance.accumulated_km = 0 
                     maintenance.last_maintenance_mileage = self.mileage
+                    maintenance.next_maintenance_mileage = self.mileage + maintenance.mileage_interval
                     self.health_status = 'Maintenance Required' 
 
             self.update_health_status()        
@@ -120,7 +121,7 @@ class Truck(db.Model):
             if self.mileage >= maintenance.next_maintenance_mileage: 
                 maintenance.status = 'Pending'
                 maintenance.last_maintenance_mileage = self.mileage
-                maintenance.next_maintenance = self.mileage + maintenance.maintenance_interval
+                maintenance.next_maintenance_mileage = self.mileage + maintenance.mileage_interval
                 maintenance.update_status()
                 db.session.add(maintenance)
                 #self.notify_owner()

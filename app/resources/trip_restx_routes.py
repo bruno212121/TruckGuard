@@ -8,13 +8,23 @@ from .. import db
 from ..models import TripModel, TruckModel, FleetAnalyticsModel, UserModel
 from ..utils.decorators import role_required
 from app.google.locations import GoogleGetLocation
-from datetime import datetime
+from datetime import datetime, date
 import asyncio
 from ..swagger_models.trip_models import (
-    trip_ns, create_trip_model, edit_trip_model, trip_list_model, 
+    trip_ns, create_trip_model, edit_trip_model, trip_list_model,
     trip_detail_model, create_trip_response_model, success_message_model,
     trip_filter_model
 )
+
+# ---- Helper: serialización segura de datetime/date a ISO8601 ----
+def serialize_dt(obj):
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        return {k: serialize_dt(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [serialize_dt(x) for x in obj]
+    return obj
 
 
 @trip_ns.route('/new')
@@ -35,20 +45,31 @@ class CreateTrip(Resource):
 
         truck = TruckModel.query.get(truck_id)
         driver = UserModel.query.get(trip_json.get('driver_id'))
-        
+
         if truck is None:
             trip_ns.abort(404, message='Truck not found')
         if driver is None:
             trip_ns.abort(404, message='Driver not found')
-        
+
         fair_components = []
+        maintenance_required_components = []
         
-        for maintenance in truck.maintenances: 
+        for maintenance in truck.maintenances:
             if maintenance.status == 'Maintenance Required':
-                trip_ns.abort(400, message=f'The component {maintenance.component} requires maintenance')
+                maintenance_required_components.append(maintenance.component)
             elif maintenance.status == 'Fair':
                 fair_components.append(maintenance.component)
         
+        # Bloquear viaje si hay componentes que requieren mantenimiento
+        if maintenance_required_components:
+            components_list = ', '.join(maintenance_required_components)
+            trip_ns.abort(400, message=f'Cannot create trip: Components requiring maintenance: {components_list}')
+        
+        # Bloquear viaje si hay componentes en estado Fair
+        if fair_components:
+            components_list = ', '.join(fair_components)
+            trip_ns.abort(400, message=f'Cannot create trip: Components in Fair condition need attention: {components_list}')
+
         try:
             google_location = GoogleGetLocation()
             distance_info = asyncio.run(google_location.get_distance(origin, destination))
@@ -67,26 +88,8 @@ class CreateTrip(Resource):
             db.session.add(new_trip)
             db.session.commit()
 
-            response = new_trip.to_json()
-            response.update(distance_info)
-            response['truck'] = {
-                'brand': truck.brand,
-                'model': truck.model,
-                'year': truck.year,
-                'truck_id': truck.truck_id
-            }
-
-            response['driver'] = {
-                'name': driver.name,
-                'email': driver.email,
-                'phone': driver.phone
-            }
-
-            if fair_components:
-                response['Warning'] = f'The components {", ".join(fair_components)} are in fair condition'
-
             return {'message': 'Trip created', 'trip': new_trip.id}, 201
-            
+
         except Exception as e:
             db.session.rollback()
             trip_ns.abort(500, message='Error creating trip', error=str(e))
@@ -109,14 +112,14 @@ class ListTrips(Resource):
 
         trips_query = TripModel.query
         if origin:
-            trips_query = trips_query.filter(TripModel.origin.like(f'%{origin}'))
+            trips_query = trips_query.filter(TripModel.origin.like(f'%{origin}%'))
         if destination:
-            trips_query = trips_query.filter(TripModel.destination.like(f'%{destination}'))
+            trips_query = trips_query.filter(TripModel.destination.like(f'%{destination}%'))
         if status:
-            trips_query = trips_query.filter(TripModel.status.like(f'%{status}'))
+            trips_query = trips_query.filter(TripModel.status.like(f'%{status}%'))
         if driver_id:
             trips_query = trips_query.filter(TripModel.driver_id == driver_id)
-        
+
         trips = trips_query.slice((page - 1) * per_page, page * per_page).all()
         total_trips = trips_query.count()
 
@@ -124,15 +127,15 @@ class ListTrips(Resource):
         for trip in trips:
             driver = db.session.query(UserModel).get(trip.driver_id)
             truck = db.session.query(TruckModel).get(trip.truck_id)
-            
+
             trip_data = {
                 'trip_id': trip.id,
                 'origin': trip.origin,
                 'destination': trip.destination,
                 'status': trip.status,
-                'date': trip.date,
-                'created_at': trip.created_at,
-                'updated_at': trip.updated_at,
+                'date': trip.date.isoformat() if trip.date else None,
+                'created_at': trip.created_at.isoformat() if trip.created_at else None,
+                'updated_at': trip.updated_at.isoformat() if trip.updated_at else None,
                 'truck': {
                     'truck_id': truck.truck_id,
                     'plate': truck.plate,
@@ -149,12 +152,12 @@ class ListTrips(Resource):
             }
             trips_list.append(trip_data)
 
-        return {
+        return serialize_dt({
             'trips': trips_list,
             'total': total_trips,
             'pages': (total_trips - 1) // per_page + 1,
             'page': page
-        }, 200
+        }), 200
 
 
 @trip_ns.route('/<int:id>')
@@ -174,9 +177,9 @@ class TripDetail(Resource):
             'origin': trip.origin,
             'destination': trip.destination,
             'status': trip.status,
-            'date': trip.date.strftime('%Y-%m-%d %H:%M:%S'),
-            'created_at': trip.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-            'updated_at': trip.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'date': trip.date.strftime('%Y-%m-%d %H:%M:%S') if trip.date else None,
+            'created_at': trip.created_at.strftime('%Y-%m-%d %H:%M:%S') if trip.created_at else None,
+            'updated_at': trip.updated_at.strftime('%Y-%m-%d %H:%M:%S') if trip.updated_at else None,
             'driver': {
                 'id': driver.id,
                 'name': driver.name,
@@ -218,7 +221,6 @@ class UpdateTrip(Resource):
         trip_json = request.get_json()
 
         new_status = trip_json.get('status')
-
         if new_status and new_status not in ['Pending', 'In Course', 'Completed']:
             trip_ns.abort(400, message='Invalid status value')
 
@@ -244,8 +246,13 @@ class CompleteTrip(Resource):
     def patch(self, id):
         """Completar un viaje"""
         trip = db.session.query(TripModel).get_or_404(id)
-        
-        if trip.driver_id != trip.driver_id and trip.owner_id != trip.owner_id:
+
+        # ---- Autorización: owner siempre puede; driver solo si es su viaje ----
+        user_id = int(get_jwt_identity())
+        user = UserModel.query.get(user_id)
+        if user is None:
+            trip_ns.abort(403, message='Unauthorized')
+        if user.rol != 'owner' and trip.driver_id != user_id:
             trip_ns.abort(403, message='Unauthorized')
 
         try:
@@ -253,28 +260,24 @@ class CompleteTrip(Resource):
             destination = trip.destination
 
             google_location = GoogleGetLocation()
-            distance_info = asyncio.run(google_location.get_distance(origin, destination)) 
-            distance_km = int(distance_info['distance'].split(' ')[0].replace(',', '')) 
+            distance_info = asyncio.run(google_location.get_distance(origin, destination))
+            distance_km = int(distance_info['distance'].split(' ')[0].replace(',', ''))
 
+            # Usar la nueva función complete_trip que actualiza automáticamente el kilometraje y degrada componentes
+            trip.complete_trip(distance_km)
+
+            # Verificar el estado de salud después del viaje
             truck = trip.truck
-            truck.update_mileage(distance_km)
-            truck.check_maintenance()
-
             remaining_km = truck.calculate_remaining_km_until_services()
-            truck.check_maintenance()
-
-            trip.status = 'Completed'
-
-            db.session.commit()
 
             FleetAnalyticsModel.update_fleet_analytics(truck.owner_id)
 
-            response = trip.to_json() 
-            response.update(distance_info) 
-            response.update(truck.to_json()) 
+            response = trip.to_json()
+            response.update(distance_info)
+            response.update(truck.to_json())
             response['remaining_km_until_services'] = remaining_km
 
-            return response, 200
+            return serialize_dt(response), 200
         except Exception as e:
             trip_ns.abort(500, message='Error completing the trip', error=str(e))
 
@@ -289,7 +292,7 @@ class DeleteTrip(Resource):
     def delete(self, id):
         """Eliminar un viaje (solo owner, solo si está completado)"""
         trip = db.session.query(TripModel).get_or_404(id)
-        
+
         if trip.status != 'Completed':
             trip_ns.abort(403, message='The trip has not been completed yet to be eliminated')
 

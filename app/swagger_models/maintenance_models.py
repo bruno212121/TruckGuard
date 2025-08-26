@@ -32,6 +32,11 @@ edit_maintenance_model = api.model('EditMaintenance', {
     'maintenance_interval': fields.Integer(required=False, description='Intervalo de mantenimiento')
 })
 
+approve_maintenance_model = api.model('ApproveMaintenance', {
+    'approval_status': fields.String(required=True, description='Estado de aprobación', 
+                                   enum=['Approved', 'Rejected'], example='Approved')
+})
+
 # Modelos de respuesta
 truck_info_model = api.model('TruckInfo', {
     'truck_id': fields.Integer(description='ID del camión'),
@@ -107,4 +112,12 @@ maintenance_stats_model = api.model('MaintenanceStats', {
     'completed_maintenances': fields.Integer(description='Mantenimientos completados'),
     'total_cost': fields.Float(description='Costo total de mantenimientos'),
     'average_cost': fields.Float(description='Costo promedio por mantenimiento')
+})
+
+# Modelo para respuesta de actualización de estado
+update_status_response_model = api.model('UpdateStatusResponse', {
+    'message': fields.String(description='Mensaje de confirmación'),
+    'truck_id': fields.Integer(description='ID del camión actualizado'),
+    'health_status': fields.String(description='Nuevo estado de salud del camión'),
+    'components_updated': fields.Integer(description='Número de componentes actualizados')
 })

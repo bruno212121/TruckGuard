@@ -5,13 +5,12 @@ from flask import request
 from flask_restx import Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from .. import db
-from ..models import FleetAnalyticsModel, UserModel, TruckModel, TripModel, MaintenanceModel
+from ..models import FleetAnalyticsModel, TruckModel, MaintenanceModel, TripModel
 from ..utils.decorators import role_required
 from datetime import datetime
 from ..swagger_models.fleetanalytics_models import (
-    fleet_ns, create_fleetanalytics_model, edit_fleetanalytics_model,
-    fleetanalytics_list_model, fleetanalytics_detail_model, create_fleetanalytics_response_model,
-    success_message_model, fleet_stats_model
+    fleet_ns, fleetanalytics_detail_model, driver_assigned_trucks_response_model,
+    maintenance_alerts_response_model
 )
 
 
@@ -23,14 +22,21 @@ class GetFleetAnalytics(Resource):
     @jwt_required()
     @role_required(['owner'])
     def get(self):
-        """Obtener análisis de flota del usuario actual"""
+        """
+        Obtener análisis de flota del usuario actual.
+        
+        Esta ruta devuelve las estadísticas completas de la flota del owner logueado,
+        incluyendo información sobre camiones, conductores, viajes y mantenimientos.
+        """
         current_user = get_jwt_identity()
         
         try:
             fleet_analytics = FleetAnalyticsModel.query.filter_by(user_id=current_user).first()
 
             if fleet_analytics is None:
-                fleet_ns.abort(404, message='No existing fleet analytics')
+                # Si no existe analytics, crear uno automáticamente
+                FleetAnalyticsModel.update_fleet_analytics(current_user)
+                fleet_analytics = FleetAnalyticsModel.query.filter_by(user_id=current_user).first()
 
             analytics_data = {
                 'analytics_id': fleet_analytics.id,
@@ -56,133 +62,180 @@ class GetFleetAnalytics(Resource):
             fleet_ns.abort(500, message='Error fetching fleet analytics', error=str(e))
 
 
-@fleet_ns.route('/analytics/<int:owner_id>')
-class GetFleetAnalyticsByOwner(Resource):
-    @fleet_ns.response(200, 'Análisis de flota obtenido exitosamente', fleetanalytics_detail_model)
-    @fleet_ns.response(404, 'Análisis de flota no encontrado')
+@fleet_ns.route('/driver/assigned-trucks')
+class GetDriverAssignedTrucks(Resource):
+    @fleet_ns.response(200, 'Camiones asignados obtenidos exitosamente', driver_assigned_trucks_response_model)
+    @fleet_ns.response(404, 'Driver no encontrado o sin camiones asignados')
     @fleet_ns.response(500, 'Error interno del servidor')
     @jwt_required()
-    @role_required(['owner'])
-    def get(self, owner_id):
-        """Obtener análisis de flota por ID de propietario"""
-        try:
-            fleet_analytics = FleetAnalyticsModel.query.filter_by(user_id=owner_id).first()
-
-            if fleet_analytics is None:
-                fleet_ns.abort(404, message='No existing fleet analytics for this owner')
-
-            analytics_data = {
-                'analytics_id': fleet_analytics.id,
-                'owner_id': fleet_analytics.user_id,
-                'total_trucks': fleet_analytics.total_trucks,
-                'active_trucks': fleet_analytics.active_trucks,
-                'total_drivers': fleet_analytics.total_drivers,
-                'available_drivers': fleet_analytics.available_drivers,
-                'total_trips': fleet_analytics.total_trips,
-                'completed_trips': fleet_analytics.completed_trips,
-                'pending_trips': fleet_analytics.pending_trips,
-                'total_maintenance': fleet_analytics.total_maintenance,
-                'pending_maintenance': fleet_analytics.pending_maintenance,
-                'total_cost': fleet_analytics.total_cost,
-                'average_cost_per_trip': fleet_analytics.average_cost_per_trip,
-                'fleet_health_score': fleet_analytics.fleet_health_score,
-                'created_at': fleet_analytics.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                'updated_at': fleet_analytics.updated_at.strftime('%Y-%m-%d %H:%M:%S')
-            }
-
-            return analytics_data, 200
-        except Exception as e:
-            fleet_ns.abort(500, message='Error fetching fleet analytics', error=str(e))
-
-
-@fleet_ns.route('/analytics/update')
-class UpdateFleetAnalytics(Resource):
-    @fleet_ns.response(200, 'Análisis de flota actualizado exitosamente', success_message_model)
-    @fleet_ns.response(404, 'Análisis de flota no encontrado')
-    @fleet_ns.response(500, 'Error interno del servidor')
-    @jwt_required()
-    @role_required(['owner'])
-    def post(self):
-        """Actualizar análisis de flota manualmente"""
+    @role_required(['driver'])
+    def get(self):
+        """
+        Obtener información de los camiones asignados al driver actual.
+        
+        Esta ruta devuelve solo los camiones que están asignados al driver logueado,
+        incluyendo información básica del camión y su estado de mantenimiento.
+        """
         current_user = get_jwt_identity()
         
         try:
-            # Llamar al método estático para actualizar
-            FleetAnalyticsModel.update_fleet_analytics(current_user)
+            # Buscar camiones asignados al driver
+            assigned_trucks = TruckModel.query.filter_by(driver_id=current_user).all()
             
-            return {'message': 'Fleet analytics updated successfully', 'analytics': current_user}, 200
-        except Exception as e:
-            fleet_ns.abort(500, message='Error updating fleet analytics', error=str(e))
-
-
-@fleet_ns.route('/stats')
-class FleetStats(Resource):
-    @fleet_ns.response(200, 'Estadísticas de flota obtenidas exitosamente', fleet_stats_model)
-    @jwt_required()
-    @role_required(['owner'])
-    def get(self):
-        """Obtener estadísticas generales de todas las flotas"""
-        try:
-            # Obtener estadísticas generales
-            total_fleets = UserModel.query.filter_by(rol='owner').count()
-            total_analytics = FleetAnalyticsModel.query.count()
+            if not assigned_trucks:
+                return {
+                    'message': 'No tienes camiones asignados actualmente',
+                    'assigned_trucks': [],
+                    'total_assigned': 0
+                }, 200
             
-            # Calcular salud promedio de flotas
-            health_scores = db.session.query(db.func.avg(FleetAnalyticsModel.fleet_health_score)).scalar() or 0
-            
-            # Calcular costo operacional total
-            total_cost = db.session.query(db.func.sum(FleetAnalyticsModel.total_cost)).scalar() or 0
-            
-            # Encontrar la flota más activa (con más viajes)
-            most_active_fleet = db.session.query(
-                FleetAnalyticsModel.user_id
-            ).order_by(FleetAnalyticsModel.total_trips.desc()).first()
-            
-            most_active_id = most_active_fleet[0] if most_active_fleet else None
+            trucks_data = []
+            for truck in assigned_trucks:
+                # Obtener mantenimientos pendientes del camión
+                pending_maintenance = MaintenanceModel.query.filter_by(
+                    truck_id=truck.truck_id,
+                    status='Pending'
+                ).count()
+                
+                # Obtener mantenimientos críticos
+                critical_maintenance = MaintenanceModel.query.filter_by(
+                    truck_id=truck.truck_id,
+                    status='Critical'
+                ).count()
+                
+                truck_info = {
+                    'truck_id': truck.truck_id,
+                    'plate': truck.plate,
+                    'model': truck.model,
+                    'brand': truck.brand,
+                    'year': truck.year,
+                    'color': truck.color,
+                    'mileage': truck.mileage,
+                    'health_status': truck.health_status,
+                    'pending_maintenance_count': pending_maintenance,
+                    'critical_maintenance_count': critical_maintenance,
+                    'assigned_date': truck.created_at.strftime('%Y-%m-%d %H:%M:%S') if truck.created_at else None
+                }
+                trucks_data.append(truck_info)
             
             return {
-                'total_fleets': total_fleets,
-                'total_analytics': total_analytics,
-                'average_fleet_health': float(health_scores),
-                'total_operational_cost': float(total_cost),
-                'most_active_fleet': most_active_id
+                'message': 'Camiones asignados obtenidos exitosamente',
+                'assigned_trucks': trucks_data,
+                'total_assigned': len(trucks_data),
+                'driver_id': current_user
             }, 200
+            
         except Exception as e:
-            fleet_ns.abort(500, message='Error fetching fleet stats', error=str(e))
+            fleet_ns.abort(500, message='Error fetching assigned trucks', error=str(e))
 
 
-@fleet_ns.route('/analytics/all')
-class ListAllFleetAnalytics(Resource):
-    @fleet_ns.response(200, 'Lista de análisis de flota obtenida exitosamente', fleetanalytics_list_model)
+@fleet_ns.route('/maintenance-alerts')
+class GetMaintenanceAlerts(Resource):
+    @fleet_ns.response(200, 'Alertas de mantenimiento obtenidas exitosamente', maintenance_alerts_response_model)
+    @fleet_ns.response(500, 'Error interno del servidor')
     @jwt_required()
     @role_required(['owner'])
     def get(self):
-        """Listar todos los análisis de flota (solo para propietarios)"""
+        """
+        Obtener alertas de mantenimiento para la flota del owner.
+        
+        Esta ruta devuelve alertas críticas sobre:
+        - Mantenimientos urgentes (menos de 1000 km restantes)
+        - Mantenimientos próximos (menos de 3000 km restantes)
+        - Componentes en estado crítico
+        - Camiones con múltiples alertas
+        """
+        current_user = get_jwt_identity()
+        
         try:
-            all_analytics = FleetAnalyticsModel.query.all()
+            # Obtener todos los camiones del owner
+            trucks = TruckModel.query.filter_by(owner_id=current_user).all()
             
-            analytics_list = []
-            for analytics in all_analytics:
-                analytics_data = {
-                    'analytics_id': analytics.id,
-                    'owner_id': analytics.user_id,
-                    'total_trucks': analytics.total_trucks,
-                    'active_trucks': analytics.active_trucks,
-                    'total_drivers': analytics.total_drivers,
-                    'available_drivers': analytics.available_drivers,
-                    'total_trips': analytics.total_trips,
-                    'completed_trips': analytics.completed_trips,
-                    'pending_trips': analytics.pending_trips,
-                    'total_maintenance': analytics.total_maintenance,
-                    'pending_maintenance': analytics.pending_maintenance,
-                    'total_cost': analytics.total_cost,
-                    'average_cost_per_trip': analytics.average_cost_per_trip,
-                    'fleet_health_score': analytics.fleet_health_score,
-                    'created_at': analytics.created_at,
-                    'updated_at': analytics.updated_at
+            alerts = {
+                'urgent_maintenance': [],
+                'upcoming_maintenance': [],
+                'critical_components': [],
+                'summary': {
+                    'total_alerts': 0,
+                    'urgent_count': 0,
+                    'upcoming_count': 0,
+                    'critical_count': 0
                 }
-                analytics_list.append(analytics_data)
+            }
             
-            return {'fleetanalytics': analytics_list}, 200
+            for truck in trucks:
+                truck_maintenance = MaintenanceModel.query.filter_by(truck_id=truck.truck_id).all()
+                
+                for maintenance in truck_maintenance:
+                    # Calcular km restantes hasta el próximo mantenimiento
+                    km_remaining = maintenance.next_maintenance_mileage - truck.mileage
+                    
+                    # Alertas urgentes (menos de 1000 km)
+                    if km_remaining <= 1000 and km_remaining > 0:
+                        alerts['urgent_maintenance'].append({
+                            'truck_id': truck.truck_id,
+                            'plate': truck.plate,
+                            'component': maintenance.component,
+                            'km_remaining': km_remaining,
+                            'next_maintenance_mileage': maintenance.next_maintenance_mileage,
+                            'current_mileage': truck.mileage,
+                            'priority': 'URGENT',
+                            'estimated_days': max(1, km_remaining // 100)  # Estimación: 100 km/día
+                        })
+                        alerts['summary']['urgent_count'] += 1
+                    
+                    # Alertas próximas (menos de 3000 km)
+                    elif km_remaining <= 3000 and km_remaining > 1000:
+                        alerts['upcoming_maintenance'].append({
+                            'truck_id': truck.truck_id,
+                            'plate': truck.plate,
+                            'component': maintenance.component,
+                            'km_remaining': km_remaining,
+                            'next_maintenance_mileage': maintenance.next_maintenance_mileage,
+                            'current_mileage': truck.mileage,
+                            'priority': 'UPCOMING',
+                            'estimated_days': max(1, km_remaining // 100)
+                        })
+                        alerts['summary']['upcoming_count'] += 1
+                
+                # Componentes en estado crítico
+                critical_maintenance = MaintenanceModel.query.filter_by(
+                    truck_id=truck.truck_id,
+                    status='Critical'
+                ).all()
+                
+                for critical in critical_maintenance:
+                    alerts['critical_components'].append({
+                        'truck_id': truck.truck_id,
+                        'plate': truck.plate,
+                        'component': critical.component,
+                        'status': critical.status,
+                        'last_maintenance_mileage': critical.last_maintenance_mileage,
+                        'current_mileage': truck.mileage,
+                        'priority': 'CRITICAL'
+                    })
+                    alerts['summary']['critical_count'] += 1
+            
+            # Calcular total de alertas
+            alerts['summary']['total_alerts'] = (
+                alerts['summary']['urgent_count'] + 
+                alerts['summary']['upcoming_count'] + 
+                alerts['summary']['critical_count']
+            )
+            
+            # Ordenar alertas por prioridad
+            alerts['urgent_maintenance'].sort(key=lambda x: x['km_remaining'])
+            alerts['upcoming_maintenance'].sort(key=lambda x: x['km_remaining'])
+            alerts['critical_components'].sort(key=lambda x: x['truck_id'])
+            
+            return alerts, 200
+            
         except Exception as e:
-            fleet_ns.abort(500, message='Error fetching all fleet analytics', error=str(e))
+            fleet_ns.abort(500, message='Error fetching maintenance alerts', error=str(e))
+
+
+
+
+
+
+

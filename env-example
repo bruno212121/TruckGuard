@@ -2,8 +2,12 @@
 PORT = 8000
 
 #Configuracion de la Base de Datos
-DATABASE_PATH = './database/'
-DATABASE_NAME = 'truckguard.db'
+# Para MySQL de Railway
+DATABASE_URL = mysql+pymysql://root:uCjcqBcpUrryejQBqQsTXjHjtgBtGFXx@gondola.proxy.rlwy.net:49855/railway
+
+# Para SQLite local (comentado)
+# DATABASE_PATH = './database/'
+# DATABASE_NAME = 'truckguard.db'
 
 #Configuracion de la API URL
 API_URL = 'http://localhost:8000'

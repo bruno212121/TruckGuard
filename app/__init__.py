@@ -6,10 +6,12 @@ from dotenv import load_dotenv
 from flask_jwt_extended import JWTManager
 from flask_mail import Mail
 
+
 # Create the SQLAlchemy object
 db = SQLAlchemy()
 jwt = JWTManager()
 mailsender = Mail()
+
 
 # Create the Flask-RESTX API object
 from app.config.api_config import api
@@ -26,24 +28,28 @@ def create_app():
         # Usar clave fija para tests
         app.config['JWT_SECRET_KEY'] = 'testing-secret-key-for-tests-only'
     else:
-        # Construir la ruta de la base de datos correctamente
-        db_path = os.getenv('DATABASE_PATH')
-        db_name = os.getenv('DATABASE_NAME')
-        full_db_path = os.path.join(db_path, db_name)
+        # Configuración para MySQL de Railway
+        mysql_uri = os.getenv('DATABASE_URL', 'mysql://root:uCjcqBcpUrryejQBqQsTXjHjtgBtGFXx@gondola.proxy.rlwy.net:49855/railway')
         
-        # Crear el directorio si no existe
-        os.makedirs(db_path, exist_ok=True)
+        # Si la URL de MySQL no tiene el formato correcto, construirla
+        if not mysql_uri.startswith('mysql://'):
+            # Construir la URL de MySQL con los parámetros de Railway
+            mysql_uri = 'mysql://root:uCjcqBcpUrryejQBqQsTXjHjtgBtGFXx@gondola.proxy.rlwy.net:49855/railway'
         
-        # Crear el archivo de base de datos si no existe (compatible con Windows)
-        if not os.path.exists(full_db_path):
-            try:
-                with open(full_db_path, 'w') as f:
-                    pass  # Crear archivo vacío
-            except Exception as e:
-                print(f"Error creando archivo de base de datos: {e}")
-
+        # Forzar el uso de PyMySQL en lugar de MySQLdb
+        if mysql_uri.startswith('mysql://'):
+            mysql_uri = mysql_uri.replace('mysql://', 'mysql+pymysql://', 1)
+        
         app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # Disable the modification tracker
-        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.abspath(full_db_path)
+        app.config['SQLALCHEMY_DATABASE_URI'] = mysql_uri
+        
+        # Configuraciones adicionales para MySQL
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'pool_pre_ping': True,
+            'pool_recycle': 300,
+            'pool_timeout': 20,
+            'max_overflow': 0
+        }
         
         # Configuración de JWT con clave secreta fija
         jwt_secret_key = os.getenv('JWT_SECRET_KEY')
@@ -74,6 +80,7 @@ def create_app():
     app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
     app.config['FLASKY_MAIL_SENDER'] = os.getenv('FLASKY_MAIL_SENDER')
     mailsender.init_app(app)
+
 
     # Blueprints clasicos (truck, trip, fleetanalytics, maintenance)
     # from app.auth import routes as auth_routes  # Comentado - usando Flask-RESTX

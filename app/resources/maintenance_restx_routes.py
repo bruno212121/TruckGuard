@@ -161,14 +161,23 @@ class ListCompletedMaintenances(Resource):
         """Listar el historial de mantenimientos completados de un camión"""
         truck = TruckModel.query.get_or_404(truck_id)
         
-        # Filtrar solo mantenimientos completados
-        completed_maintenances = MaintenanceModel.query.filter_by(
-            truck_id=truck_id, 
-            status='Completed'
+        # Primero, vamos a ver todos los mantenimientos para diagnosticar
+        all_maintenances = MaintenanceModel.query.filter_by(truck_id=truck_id).all()
+        
+        # Debug: imprimir estados para diagnosticar
+        print(f"Total mantenimientos para truck {truck_id}: {len(all_maintenances)}")
+        for maint in all_maintenances:
+            print(f"Maintenance ID: {maint.id}, Status: '{maint.status}', Component: {maint.component}")
+        
+        # Mostrar todos los mantenimientos (no solo completados) para el historial
+        all_maintenances_ordered = MaintenanceModel.query.filter_by(
+            truck_id=truck_id
         ).order_by(MaintenanceModel.updated_at.desc()).all()
         
+        print(f"Total mantenimientos para historial: {len(all_maintenances_ordered)}")
+        
         maintenances_list = []
-        for maintenance in completed_maintenances:
+        for maintenance in all_maintenances_ordered:
             driver = db.session.query(UserModel).get(maintenance.driver_id)
             
             maintenance_data = {

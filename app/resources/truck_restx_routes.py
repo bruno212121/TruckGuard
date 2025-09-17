@@ -351,10 +351,21 @@ class TruckComponentsStatus(Resource):
             for component in components:
                 component.update_status()
             
+            # Agrupar componentes por nombre y obtener el más reciente de cada uno
+            components_by_name = {}
+            for component in components:
+                component_name = component.component
+                if component_name not in components_by_name:
+                    components_by_name[component_name] = component
+                else:
+                    # Mantener el componente con el ID más alto (más reciente)
+                    if component.id > components_by_name[component_name].id:
+                        components_by_name[component_name] = component
+            
             components_status = []
             components_requiring_maintenance = 0
             
-            for component in components:
+            for component_name, component in components_by_name.items():
                 # Calcular kilómetros restantes
                 km_remaining = max(0, component.next_maintenance_mileage - truck.mileage)
                 

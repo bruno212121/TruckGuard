@@ -39,6 +39,10 @@ assign_truck_model = api.model('AssignTruck', {
     'driver_id': fields.Integer(required=True, description='ID del conductor a asignar', example=1)
 })
 
+unassign_truck_model = api.model('UnassignTruck', {
+    # No se requieren parámetros, solo se remueve el conductor actual
+})
+
 # Modelos de respuesta
 driver_model = api.model('Driver', {
     'id': fields.Integer(description='ID del conductor'),
@@ -89,6 +93,36 @@ assign_truck_response_model = api.model('AssignTruckResponse', {
     'truck': fields.String(description='Modelo del camión'),
     'Name driver': fields.String(description='Nombre del conductor'),
     'Surname driver': fields.String(description='Apellido del conductor')
+})
+
+unassign_truck_response_model = api.model('UnassignTruckResponse', {
+    'message': fields.String(description='Mensaje de confirmación'),
+    'truck': fields.String(description='Modelo del camión'),
+    'previous_driver': fields.String(description='Nombre del conductor que fue removido')
+})
+
+# Modelo para estado de componentes
+component_status_model = api.model('ComponentStatus', {
+    'component_name': fields.String(description='Nombre del componente', example='Filtros'),
+    'current_status': fields.String(description='Estado actual del componente', example='Good'),
+    'health_percentage': fields.Integer(description='Porcentaje de salud del componente', example=75),
+    'last_maintenance_mileage': fields.Integer(description='Último kilometraje de mantenimiento', example=40000),
+    'next_maintenance_mileage': fields.Integer(description='Próximo kilometraje de mantenimiento', example=50000),
+    'km_remaining': fields.Integer(description='Kilómetros restantes hasta próximo mantenimiento', example=5000),
+    'maintenance_interval': fields.Integer(description='Intervalo de mantenimiento en km', example=10000)
+})
+
+truck_components_status_model = api.model('TruckComponentsStatus', {
+    'truck_id': fields.Integer(description='ID del camión'),
+    'plate': fields.String(description='Matrícula del camión'),
+    'model': fields.String(description='Modelo del camión'),
+    'brand': fields.String(description='Marca del camión'),
+    'current_mileage': fields.Integer(description='Kilometraje actual'),
+    'overall_health_status': fields.String(description='Estado general de salud del camión'),
+    'components': fields.List(fields.Nested(component_status_model), description='Lista de componentes con su estado'),
+    'total_components': fields.Integer(description='Total de componentes'),
+    'components_requiring_maintenance': fields.Integer(description='Componentes que requieren mantenimiento'),
+    'last_updated': fields.String(description='Última actualización del estado', example='2024-01-15 10:30:00')
 })
 
 drivers_without_truck_model = api.model('DriversWithoutTruck', {

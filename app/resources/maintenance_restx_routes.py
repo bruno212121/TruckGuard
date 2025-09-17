@@ -152,35 +152,36 @@ class GetComponent(Resource):
 
 
 @maintenance_ns.route('/<int:truck_id>/components')
-class ListComponents(Resource):
-    @maintenance_ns.response(200, 'Componentes obtenidos exitosamente', maintenance_list_model)
+class ListCompletedMaintenances(Resource):
+    @maintenance_ns.response(200, 'Historial de mantenimientos completados obtenido exitosamente', maintenance_list_model)
     @maintenance_ns.response(404, 'Camión no encontrado')
     @jwt_required()
     @role_required(['owner'])
     def get(self, truck_id):
-        """Listar todos los componentes de un camión"""
+        """Listar el historial de mantenimientos completados de un camión"""
         truck = TruckModel.query.get_or_404(truck_id)
-        components = truck.maintenances
         
-        # Actualizar el estado de todos los componentes antes de devolver la lista
-        for component in components:
-            component.update_status()
+        # Filtrar solo mantenimientos completados
+        completed_maintenances = MaintenanceModel.query.filter_by(
+            truck_id=truck_id, 
+            status='Completed'
+        ).order_by(MaintenanceModel.updated_at.desc()).all()
         
-        components_list = []
-        for component in components:
-            driver = db.session.query(UserModel).get(component.driver_id)
+        maintenances_list = []
+        for maintenance in completed_maintenances:
+            driver = db.session.query(UserModel).get(maintenance.driver_id)
             
-            component_data = {
-                'maintenance_id': component.id,
-                'description': component.description,
-                'status': component.status,
-                'component': component.component,
-                'cost': component.cost,
-                'mileage_interval': component.mileage_interval,
-                'last_maintenance_mileage': component.last_maintenance_mileage,
-                'next_maintenance_mileage': component.next_maintenance_mileage,
-                'created_at': serialize_dt(component.created_at),
-                'updated_at': serialize_dt(component.updated_at), 
+            maintenance_data = {
+                'maintenance_id': maintenance.id,
+                'description': maintenance.description,
+                'status': maintenance.status,
+                'component': maintenance.component,
+                'cost': maintenance.cost,
+                'mileage_interval': maintenance.mileage_interval,
+                'last_maintenance_mileage': maintenance.last_maintenance_mileage,
+                'next_maintenance_mileage': maintenance.next_maintenance_mileage,
+                'created_at': serialize_dt(maintenance.created_at),
+                'updated_at': serialize_dt(maintenance.updated_at), 
                 'truck': {
                     'truck_id': truck.truck_id,
                     'plate': truck.plate,
@@ -195,9 +196,9 @@ class ListComponents(Resource):
                     'email': driver.email
                 } if driver else None
             }
-            components_list.append(component_data)
+            maintenances_list.append(maintenance_data)
         
-        return {'maintenances': components_list}, 200
+        return {'maintenances': maintenances_list}, 200
 
 
 @maintenance_ns.route('/<int:id>/approve')

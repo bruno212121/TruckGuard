@@ -1,6 +1,6 @@
 from flask import request, jsonify, Blueprint
 from flask_restx import Resource
-from app.config.swagger_config import create_truck_model, truck_list_model, truck_detail_model, edit_truck_model, assign_truck_model, drivers_list_model, success_message_model, assign_truck_response_model
+from app.config.swagger_config import create_truck_model, truck_list_model, truck_detail_model, edit_truck_model, assign_truck_model, unassign_truck_model, drivers_list_model, success_message_model, assign_truck_response_model, unassign_truck_response_model
 from .. import db
 from ..models import TruckModel, MaintenanceModel, FleetAnalyticsModel, UserModel
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
@@ -237,6 +237,48 @@ def assign_truck(id):
         db.session.rollback()
         return jsonify({'message': 'Error assigning truck', 'error': str(e)}), 500
 
+
+@trucks.route('/<int:id>/unassign', methods=['PUT'])
+@jwt_required()
+@trucks.expect(unassign_truck_model)
+@trucks.response(200, 'Conductor removido exitosamente', unassign_truck_response_model)
+@trucks.response(400, 'Datos inválidos')
+@trucks.response(403, 'No autorizado')
+@trucks.response(404, 'Camión no encontrado')
+@trucks.response(500, 'Error interno del servidor')
+@role_required(['owner'])
+def unassign_truck(id):
+    """Remover el conductor asignado a un camión"""
+    try:
+        truck = db.session.query(TruckModel).get_or_404(id)
+        current_user = get_jwt_identity()
+
+        # Verificar que el camión pertenece al owner actual
+        if str(truck.owner_id) != str(current_user):
+            return jsonify({'message': 'Not authorized'}), 403
+        
+        # Verificar que el camión tiene un conductor asignado
+        if not truck.driver_id:
+            return jsonify({'message': 'Truck has no driver assigned'}), 400
+        
+        # Obtener información del conductor antes de removerlo
+        previous_driver = UserModel.query.get(truck.driver_id)
+        previous_driver_name = f"{previous_driver.name} {previous_driver.surname}" if previous_driver else "Unknown"
+        
+        # Remover el conductor
+        truck.driver_id = None
+        truck.updated_at = datetime.now()
+        db.session.commit()
+
+        return jsonify({
+            'message': 'Driver unassigned successfully', 
+            'truck': truck.model, 
+            'previous_driver': previous_driver_name
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': 'Error unassigning truck', 'error': str(e)}), 500
 
 
 @trucks.route('/drivers_without_truck', methods=['GET'])

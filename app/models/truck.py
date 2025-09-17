@@ -11,7 +11,7 @@ class Truck(db.Model):
     brand = db.Column(db.String(100), nullable=False)
     year = db.Column(db.String(100), nullable=False)
     color = db.Column(db.String(100), nullable=False)
-    status = db.Column(db.String(100), nullable=False, default='Activo')
+    status = db.Column(db.String(100), nullable=False, default='Inactivo')
     mileage = db.Column(db.Integer, nullable=False, default=0) #kilometraje
     health_status = db.Column(db.String(100), nullable=False, default='Good') #estado de salud
     created_at = db.Column(db.DateTime, default=datetime.now(), nullable=False)

@@ -9,9 +9,10 @@ from ..models import TruckModel, MaintenanceModel, FleetAnalyticsModel, UserMode
 from ..utils.decorators import role_required
 from datetime import datetime
 from ..swagger_models.truck_models import (
-    truck_ns, create_truck_model, edit_truck_model, assign_truck_model,
+    truck_ns, create_truck_model, edit_truck_model, assign_truck_model, unassign_truck_model,
     truck_list_model, truck_detail_model, create_truck_response_model,
-    assign_truck_response_model, drivers_list_model, success_message_model
+    assign_truck_response_model, unassign_truck_response_model, drivers_list_model, success_message_model,
+    truck_components_status_model
 )
 
 
@@ -281,6 +282,121 @@ class AssignTruck(Resource):
         except Exception as e:
             db.session.rollback()
             truck_ns.abort(500, message='Error assigning truck', error=str(e))
+
+
+@truck_ns.route('/<int:id>/unassign')
+class UnassignTruck(Resource):
+    @truck_ns.expect(unassign_truck_model)
+    @truck_ns.response(200, 'Conductor removido exitosamente', unassign_truck_response_model)
+    @truck_ns.response(400, 'Datos inválidos')
+    @truck_ns.response(403, 'No autorizado')
+    @truck_ns.response(404, 'Camión no encontrado')
+    @truck_ns.response(500, 'Error interno del servidor')
+    @jwt_required()
+    @role_required(['owner'])
+    def put(self, id):
+        """Remover el conductor asignado a un camión"""
+        try:
+            truck = db.session.query(TruckModel).get_or_404(id)
+            current_user = get_jwt_identity()
+
+            # Verificar que el camión pertenece al owner actual
+            if str(truck.owner_id) != str(current_user):
+                truck_ns.abort(403, message='Not authorized')
+            
+            # Verificar que el camión tiene un conductor asignado
+            if not truck.driver_id:
+                truck_ns.abort(400, message='Truck has no driver assigned')
+            
+            # Obtener información del conductor antes de removerlo
+            previous_driver = UserModel.query.get(truck.driver_id)
+            previous_driver_name = f"{previous_driver.name} {previous_driver.surname}" if previous_driver else "Unknown"
+            
+            # Remover el conductor
+            truck.driver_id = None
+            truck.updated_at = datetime.now()
+            db.session.commit()
+
+            return {
+                'message': 'Driver unassigned successfully', 
+                'truck': truck.model, 
+                'previous_driver': previous_driver_name
+            }, 200
+
+        except Exception as e:
+            db.session.rollback()
+            truck_ns.abort(500, message='Error unassigning truck', error=str(e))
+
+
+@truck_ns.route('/<int:id>/components-status')
+class TruckComponentsStatus(Resource):
+    @truck_ns.response(200, 'Estado de componentes obtenido exitosamente', truck_components_status_model)
+    @truck_ns.response(404, 'Camión no encontrado')
+    @jwt_required()
+    @role_required(['owner'])
+    def get(self, id):
+        """Obtener el estado actual de salud de todos los componentes de un camión"""
+        try:
+            truck = TruckModel.query.get_or_404(id)
+            current_user = get_jwt_identity()
+
+            # Verificar que el camión pertenece al owner actual
+            if str(truck.owner_id) != str(current_user):
+                truck_ns.abort(403, message='Not authorized')
+            
+            # Obtener todos los componentes del camión
+            components = truck.maintenances
+            
+            # Actualizar el estado de todos los componentes
+            for component in components:
+                component.update_status()
+            
+            components_status = []
+            components_requiring_maintenance = 0
+            
+            for component in components:
+                # Calcular kilómetros restantes
+                km_remaining = max(0, component.next_maintenance_mileage - truck.mileage)
+                
+                # Calcular porcentaje de salud
+                if component.maintenance_interval > 0:
+                    km_since_last = truck.mileage - component.last_maintenance_mileage
+                    health_percentage = max(0, 100 - (km_since_last / component.maintenance_interval) * 100)
+                else:
+                    health_percentage = 100
+                
+                # Contar componentes que requieren mantenimiento
+                if component.status == 'Maintenance Required':
+                    components_requiring_maintenance += 1
+                
+                component_data = {
+                    'component_name': component.component,
+                    'current_status': component.status,
+                    'health_percentage': int(health_percentage),
+                    'last_maintenance_mileage': component.last_maintenance_mileage,
+                    'next_maintenance_mileage': component.next_maintenance_mileage,
+                    'km_remaining': km_remaining,
+                    'maintenance_interval': component.maintenance_interval
+                }
+                components_status.append(component_data)
+            
+            response_data = {
+                'truck_id': truck.truck_id,
+                'plate': truck.plate,
+                'model': truck.model,
+                'brand': truck.brand,
+                'current_mileage': truck.mileage,
+                'overall_health_status': truck.health_status,
+                'components': components_status,
+                'total_components': len(components_status),
+                'components_requiring_maintenance': components_requiring_maintenance,
+                'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+            
+            return response_data, 200
+            
+        except Exception as e:
+            truck_ns.abort(500, message='Error getting components status', error=str(e))
 
 
 @truck_ns.route('/drivers_without_truck')

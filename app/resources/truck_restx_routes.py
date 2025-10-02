@@ -14,6 +14,7 @@ from ..swagger_models.truck_models import (
     assign_truck_response_model, unassign_truck_response_model, drivers_list_model, success_message_model,
     truck_components_status_model
 )
+from .component_restx_routes import ComponentManager
 
 
 
@@ -57,50 +58,11 @@ class CreateTruck(Resource):
             db.session.add(new_truck)
             db.session.flush() 
 
-            def next_due(current_mileage, interval):
-                return ((current_mileage // interval) + 1) * interval  
-            
-            def last_done(current_mileage, interval):
-                return ((current_mileage // interval) * interval) 
-
-            current_mileage = new_truck.mileage 
-
-            # Componentes por defecto si no se proporcionan
-            default_components = [
-                {"name": "Filtros",     "interval": 10000},
-                {"name": "Aceite",      "interval":  5000},
-                {"name": "Inyecciones", "interval":  8000},
-                {"name": "Frenos",      "interval":  9500},
-            ]
-
-            # Si se proporcionan componentes personalizados, usarlos; si no, usar los por defecto
-            components = data.get('components', default_components)
-
-            for component in components:
-                # Si el componente tiene valores personalizados, usarlos; si no, calcular automáticamente
-                if 'last_maintenance_mileage' in component and 'next_maintenance_mileage' in component:
-                    last_mileage = component['last_maintenance_mileage']
-                    next_mileage = component['next_maintenance_mileage']
-                else:
-                    next_mileage = next_due(current_mileage, component['interval'])
-                    last_mileage = last_done(current_mileage, component['interval'])
-
-                # Estado del componente: personalizado o por defecto
-                component_status = component.get('status', 'Excellent')
-
-                maintenance = MaintenanceModel(
-                    description=f'{component["name"]} maintenance', 
-                    status=component_status, 
-                    component=component['name'], 
-                    cost=0, 
-                    mileage_interval=component['interval'],
-                    last_maintenance_mileage=last_mileage,
-                    next_maintenance_mileage=next_mileage,
-                    truck_id=new_truck.truck_id,
-                    driver_id=driver_id,
-                    maintenance_interval=component['interval']
-                )
-                db.session.add(maintenance)
+            # Crear componentes usando ComponentManager
+            components_data = data.get('components', None)  # None para usar componentes por defecto
+            created_components = ComponentManager.create_components_for_truck(
+                new_truck, components_data, driver_id
+            )
             
             db.session.commit()
             FleetAnalyticsModel.update_fleet_analytics(current_user)
@@ -328,86 +290,6 @@ class UnassignTruck(Resource):
             truck_ns.abort(500, message='Error unassigning truck', error=str(e))
 
 
-@truck_ns.route('/<int:id>/components-status')
-class TruckComponentsStatus(Resource):
-    @truck_ns.response(200, 'Estado de componentes obtenido exitosamente', truck_components_status_model)
-    @truck_ns.response(404, 'Camión no encontrado')
-    @jwt_required()
-    @role_required(['owner'])
-    def get(self, id):
-        """Obtener el estado actual de salud de todos los componentes de un camión"""
-        try:
-            truck = TruckModel.query.get_or_404(id)
-            current_user = get_jwt_identity()
-
-            # Verificar que el camión pertenece al owner actual
-            if str(truck.owner_id) != str(current_user):
-                truck_ns.abort(403, message='Not authorized')
-            
-            # Obtener todos los componentes del camión
-            components = truck.maintenances
-            
-            # Actualizar el estado de todos los componentes
-            for component in components:
-                component.update_status()
-            
-            # Agrupar componentes por nombre y obtener el más reciente de cada uno
-            components_by_name = {}
-            for component in components:
-                component_name = component.component
-                if component_name not in components_by_name:
-                    components_by_name[component_name] = component
-                else:
-                    # Mantener el componente con el ID más alto (más reciente)
-                    if component.id > components_by_name[component_name].id:
-                        components_by_name[component_name] = component
-            
-            components_status = []
-            components_requiring_maintenance = 0
-            
-            for component_name, component in components_by_name.items():
-                # Calcular kilómetros restantes
-                km_remaining = max(0, component.next_maintenance_mileage - truck.mileage)
-                
-                # Calcular porcentaje de salud
-                if component.maintenance_interval > 0:
-                    km_since_last = truck.mileage - component.last_maintenance_mileage
-                    health_percentage = max(0, 100 - (km_since_last / component.maintenance_interval) * 100)
-                else:
-                    health_percentage = 100
-                
-                # Contar componentes que requieren mantenimiento
-                if component.status == 'Maintenance Required':
-                    components_requiring_maintenance += 1
-                
-                component_data = {
-                    'component_name': component.component,
-                    'current_status': component.status,
-                    'health_percentage': int(health_percentage),
-                    'last_maintenance_mileage': component.last_maintenance_mileage,
-                    'next_maintenance_mileage': component.next_maintenance_mileage,
-                    'km_remaining': km_remaining,
-                    'maintenance_interval': component.maintenance_interval
-                }
-                components_status.append(component_data)
-            
-            response_data = {
-                'truck_id': truck.truck_id,
-                'plate': truck.plate,
-                'model': truck.model,
-                'brand': truck.brand,
-                'current_mileage': truck.mileage,
-                'overall_health_status': truck.health_status,
-                'components': components_status,
-                'total_components': len(components_status),
-                'components_requiring_maintenance': components_requiring_maintenance,
-                'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            }
-            
-            return response_data, 200
-            
-        except Exception as e:
-            truck_ns.abort(500, message='Error getting components status', error=str(e))
 
 
 @truck_ns.route('/drivers_without_truck')

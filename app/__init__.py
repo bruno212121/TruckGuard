@@ -120,6 +120,10 @@ def create_app():
     # Registrar namespaces de fleetanalytics
     from app.resources.fleetanalytics_restx_routes import fleet_ns
     api.add_namespace(fleet_ns)
+    
+    # Registrar namespaces de componentes
+    from app.resources.component_restx_routes import component_ns
+    api.add_namespace(component_ns)
 
     # ===== BEFORE_REQUEST: asegurar mapeo de endpoints de auth en caliente =====
     # Comentado - usando Flask-RESTX que maneja esto automáticamente

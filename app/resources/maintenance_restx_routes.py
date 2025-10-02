@@ -169,15 +169,16 @@ class ListCompletedMaintenances(Resource):
         for maint in all_maintenances:
             print(f"Maintenance ID: {maint.id}, Status: '{maint.status}', Component: {maint.component}")
         
-        # Mostrar todos los mantenimientos (no solo completados) para el historial
-        all_maintenances_ordered = MaintenanceModel.query.filter_by(
-            truck_id=truck_id
+        # Mostrar solo los mantenimientos completados para el historial
+        completed_maintenances_ordered = MaintenanceModel.query.filter_by(
+            truck_id=truck_id,
+            status='Completed'
         ).order_by(MaintenanceModel.updated_at.desc()).all()
         
-        print(f"Total mantenimientos para historial: {len(all_maintenances_ordered)}")
+        print(f"Total mantenimientos completados para historial: {len(completed_maintenances_ordered)}")
         
         maintenances_list = []
-        for maintenance in all_maintenances_ordered:
+        for maintenance in completed_maintenances_ordered:
             driver = db.session.query(UserModel).get(maintenance.driver_id)
             
             maintenance_data = {

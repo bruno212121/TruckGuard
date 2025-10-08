@@ -5,6 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 from flask_jwt_extended import JWTManager
 from flask_mail import Mail
+from .config.database_config import get_database_config, get_database_uri, setup_database_events
 
 
 # Create the SQLAlchemy object
@@ -28,28 +29,13 @@ def create_app():
         # Usar clave fija para tests
         app.config['JWT_SECRET_KEY'] = 'testing-secret-key-for-tests-only'
     else:
-        # Configuración para MySQL de Railway
-        mysql_uri = os.getenv('DATABASE_URL', 'mysql://root:uCjcqBcpUrryejQBqQsTXjHjtgBtGFXx@gondola.proxy.rlwy.net:49855/railway')
-        
-        # Si la URL de MySQL no tiene el formato correcto, construirla
-        if not mysql_uri.startswith('mysql://'):
-            # Construir la URL de MySQL con los parámetros de Railway
-            mysql_uri = 'mysql://root:uCjcqBcpUrryejQBqQsTXjHjtgBtGFXx@gondola.proxy.rlwy.net:49855/railway'
-        
-        # Forzar el uso de PyMySQL en lugar de MySQLdb
-        if mysql_uri.startswith('mysql://'):
-            mysql_uri = mysql_uri.replace('mysql://', 'mysql+pymysql://', 1)
-        
+        # Configuración para MySQL usando la configuración optimizada
         app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # Disable the modification tracker
-        app.config['SQLALCHEMY_DATABASE_URI'] = mysql_uri
+        app.config['SQLALCHEMY_DATABASE_URI'] = get_database_uri()
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = get_database_config()
         
-        # Configuraciones adicionales para MySQL
-        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-            'pool_pre_ping': True,
-            'pool_recycle': 300,
-            'pool_timeout': 20,
-            'max_overflow': 0
-        }
+        # Configurar eventos de base de datos para monitoreo
+        setup_database_events()
         
         # Configuración de JWT con clave secreta fija
         jwt_secret_key = os.getenv('JWT_SECRET_KEY')
@@ -63,6 +49,12 @@ def create_app():
         app.config['JWT_SECRET_KEY'] = jwt_secret_key
 
     db.init_app(app)
+    
+    # Configurar manejo automático de sesiones
+    @app.teardown_appcontext
+    def shutdown_session(exception=None):
+        """Cierra la sesión de base de datos al final de cada request"""
+        db.session.remove()
 
     # --- JWT ---
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES', '3600'))

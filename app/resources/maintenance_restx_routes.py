@@ -320,3 +320,63 @@ class UpdateMaintenanceStatus(Resource):
         except Exception as e:
             db.session.rollback()
             maintenance_ns.abort(500, message='Error updating maintenance statuses', error=str(e))
+
+
+@maintenance_ns.route('/pending')
+class ListPendingMaintenances(Resource):
+    @maintenance_ns.response(200, 'Mantenimientos pendientes obtenidos exitosamente', maintenance_list_model)
+    @maintenance_ns.response(500, 'Error interno del servidor')
+    @jwt_required()
+    @role_required(['owner'])
+    def get(self):
+        """Listar todos los mantenimientos pendientes de aprobación"""
+        try:
+            current_user = get_jwt_identity()
+            
+            # Obtener todos los mantenimientos pendientes
+            pending_maintenances = MaintenanceModel.query.filter_by(status='Pending').order_by(MaintenanceModel.created_at.desc()).all()
+            
+            maintenances_list = []
+            for maintenance in pending_maintenances:
+                # Obtener información del camión
+                truck = TruckModel.query.get(maintenance.truck_id)
+                
+                # Obtener información del driver
+                driver = UserModel.query.get(maintenance.driver_id) if maintenance.driver_id else None
+                
+                # Verificar que el camión pertenece al owner actual
+                if truck and str(truck.owner_id) == str(current_user):
+                    maintenance_data = {
+                        'maintenance_id': maintenance.id,
+                        'description': maintenance.description,
+                        'status': maintenance.status,
+                        'component': maintenance.component,
+                        'cost': maintenance.cost,
+                        'mileage_interval': maintenance.mileage_interval,
+                        'last_maintenance_mileage': maintenance.last_maintenance_mileage,
+                        'next_maintenance_mileage': maintenance.next_maintenance_mileage,
+                        'created_at': serialize_dt(maintenance.created_at),
+                        'updated_at': serialize_dt(maintenance.updated_at),
+                        'truck': {
+                            'truck_id': truck.truck_id,
+                            'plate': truck.plate,
+                            'model': truck.model,
+                            'brand': truck.brand,
+                            'mileage': truck.mileage
+                        } if truck else None,
+                        'driver': {
+                            'id': driver.id,
+                            'name': driver.name,
+                            'surname': driver.surname,
+                            'email': driver.email
+                        } if driver else None
+                    }
+                    maintenances_list.append(maintenance_data)
+            
+            return {
+                'pending_maintenances': maintenances_list,
+                'total_pending': len(maintenances_list)
+            }, 200
+            
+        except Exception as e:
+            maintenance_ns.abort(500, message='Error getting pending maintenances', error=str(e))

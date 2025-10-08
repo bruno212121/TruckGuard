@@ -10,7 +10,8 @@ from ..utils.decorators import role_required
 from datetime import datetime, date
 from ..swagger_models.component_models import (
     component_ns, component_status_model, component_list_model,
-    create_component_model, component_detail_model
+    create_component_model, component_detail_model, bulk_components_request_model,
+    bulk_components_response_model
 )
 
 
@@ -354,3 +355,150 @@ class DebugCalculateStatus(Resource):
             'current_mileage': current_mileage,
             'components_debug': debug_results
         }, 200
+
+
+@component_ns.route('/bulk/status')
+class GetBulkComponentsStatus(Resource):
+    @component_ns.expect(bulk_components_request_model)
+    @component_ns.response(200, 'Estados de componentes obtenidos exitosamente', bulk_components_response_model)
+    @component_ns.response(400, 'Datos inválidos')
+    @component_ns.response(500, 'Error interno del servidor')
+    @jwt_required()
+    @role_required(['owner'])
+    def post(self):
+        """
+        Obtener el estado de componentes de múltiples camiones en una sola llamada.
+        
+        Este endpoint optimiza las consultas para evitar múltiples round-trips
+        al servidor y reduce la carga en el pool de conexiones.
+        
+        Ejemplo de uso:
+        POST /components/bulk/status
+        {
+            "truck_ids": [1, 2, 3, 4, 5]
+        }
+        """
+        import time
+        start_time = time.time()
+        
+        try:
+            data = request.get_json()
+            if not data or 'truck_ids' not in data:
+                component_ns.abort(400, message='truck_ids es requerido')
+            
+            truck_ids = data['truck_ids']
+            if not isinstance(truck_ids, list) or len(truck_ids) == 0:
+                component_ns.abort(400, message='truck_ids debe ser una lista no vacía')
+            
+            # Validar que no hay más de 50 camiones por request (límite de seguridad)
+            if len(truck_ids) > 50:
+                component_ns.abort(400, message='Máximo 50 camiones por request')
+            
+            current_user = get_jwt_identity()
+            successful_trucks = []
+            failed_trucks = []
+            
+            # Obtener todos los camiones en una sola query (optimización clave)
+            trucks = TruckModel.query.filter(
+                TruckModel.truck_id.in_(truck_ids),
+                TruckModel.owner_id == current_user
+            ).all()
+            
+            # Crear un diccionario para acceso rápido
+            trucks_dict = {truck.truck_id: truck for truck in trucks}
+            
+            # Procesar cada truck_id solicitado
+            for truck_id in truck_ids:
+                try:
+                    truck = trucks_dict.get(truck_id)
+                    
+                    if not truck:
+                        failed_trucks.append({
+                            'truck_id': truck_id,
+                            'error': f'Camión {truck_id} no encontrado o no autorizado'
+                        })
+                        continue
+                    
+                    # Obtener todos los componentes del camión
+                    components = truck.maintenances
+                    
+                    # Actualizar estados solo si el camión tiene kilometraje
+                    if truck.mileage > 0:
+                        for component in components:
+                            component.update_status()
+                    
+                    # Agrupar componentes por nombre y obtener el más reciente
+                    components_by_name = {}
+                    for component in components:
+                        component_name = component.component
+                        if component_name not in components_by_name:
+                            components_by_name[component_name] = component
+                        else:
+                            if component.id > components_by_name[component_name].id:
+                                components_by_name[component_name] = component
+                    
+                    components_status = []
+                    components_requiring_maintenance = 0
+                    
+                    for component_name, component in components_by_name.items():
+                        # Calcular kilómetros restantes
+                        km_remaining = max(0, component.next_maintenance_mileage - truck.mileage)
+                        
+                        # Calcular porcentaje de salud
+                        if component.maintenance_interval > 0:
+                            km_since_last = truck.mileage - component.last_maintenance_mileage
+                            health_percentage = max(0, 100 - (km_since_last / component.maintenance_interval) * 100)
+                        else:
+                            health_percentage = 100
+                        
+                        # Contar componentes que requieren mantenimiento
+                        if component.status == 'Maintenance Required':
+                            components_requiring_maintenance += 1
+                        
+                        component_data = {
+                            'component_name': component.component,
+                            'current_status': component.status,
+                            'health_percentage': int(health_percentage),
+                            'last_maintenance_mileage': component.last_maintenance_mileage,
+                            'next_maintenance_mileage': component.next_maintenance_mileage,
+                            'km_remaining': km_remaining,
+                            'maintenance_interval': component.maintenance_interval
+                        }
+                        components_status.append(component_data)
+                    
+                    truck_data = {
+                        'truck_id': truck.truck_id,
+                        'plate': truck.plate,
+                        'model': truck.model,
+                        'brand': truck.brand,
+                        'current_mileage': truck.mileage,
+                        'overall_health_status': truck.health_status,
+                        'components': components_status,
+                        'total_components': len(components_status),
+                        'components_requiring_maintenance': components_requiring_maintenance,
+                        'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }
+                    
+                    successful_trucks.append(truck_data)
+                    
+                except Exception as e:
+                    failed_trucks.append({
+                        'truck_id': truck_id,
+                        'error': f'Error procesando camión {truck_id}: {str(e)}'
+                    })
+            
+            processing_time = (time.time() - start_time) * 1000  # Convertir a milisegundos
+            
+            response_data = {
+                'successful_trucks': successful_trucks,
+                'failed_trucks': failed_trucks,
+                'total_requested': len(truck_ids),
+                'total_successful': len(successful_trucks),
+                'total_failed': len(failed_trucks),
+                'processing_time_ms': round(processing_time, 2)
+            }
+            
+            return response_data, 200
+            
+        except Exception as e:
+            component_ns.abort(500, message='Error procesando request bulk', error=str(e))

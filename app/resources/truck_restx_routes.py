@@ -107,13 +107,14 @@ class ListTrucks(Resource):
         return {'trucks': trucks_list}, 200
 
 
+#ver detalles de un camion y si el owner o el driver es el que esta logueado
 @truck_ns.route('/<int:id>')
 class TruckDetail(Resource):
     @truck_ns.response(200, 'Detalles del camión obtenidos exitosamente', truck_detail_model)
     @truck_ns.response(403, 'No autorizado')
     @truck_ns.response(404, 'Camión no encontrado')
     @jwt_required()
-    @role_required(['owner'])
+    @role_required(['owner','driver'])
     def get(self, id):
         """Obtener detalles de un camión específico"""
         current_user_id = get_jwt_identity()
@@ -152,6 +153,7 @@ class TruckDetail(Resource):
         return {'truck': truck_data}, 200
 
 
+#editar un camion y si el owner es el que esta logueado
 @truck_ns.route('/<int:id>/edit')
 class EditTruck(Resource):
     @truck_ns.expect(edit_truck_model)
@@ -160,7 +162,7 @@ class EditTruck(Resource):
     @truck_ns.response(403, 'No autorizado')
     @truck_ns.response(404, 'Camión no encontrado')
     @jwt_required()
-    @role_required(['owner'])
+    @role_required(['owner','driver'])
     def put(self, id):
        
         truck = db.session.query(TruckModel).get_or_404(id)

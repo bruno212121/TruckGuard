@@ -2,6 +2,7 @@ from functools import wraps
 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
 from flask_restx import abort
 from ..models import UserModel
+from .. import db
 
 def role_required(roles):
     def decorator(func):
@@ -43,3 +44,58 @@ def role_required(roles):
                 
         return wrapper
     return decorator
+
+
+def db_session_management(func):
+    """
+    Decorador para manejo automático de sesiones de base de datos.
+    Asegura que las sesiones se cierren correctamente después de cada operación.
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            # Ejecutar la función
+            result = func(*args, **kwargs)
+            
+            # Si todo salió bien, hacer commit
+            db.session.commit()
+            return result
+            
+        except Exception as e:
+            # En caso de error, hacer rollback
+            db.session.rollback()
+            raise e
+            
+        finally:
+            # Siempre cerrar la sesión para liberar la conexión del pool
+            db.session.remove()
+            
+    return wrapper
+
+
+def db_transaction(func):
+    """
+    Decorador para manejo de transacciones de base de datos.
+    Útil para operaciones que requieren múltiples cambios atómicos.
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            # Ejecutar la función dentro de una transacción
+            result = func(*args, **kwargs)
+            
+            # Si todo salió bien, hacer commit
+            db.session.commit()
+            return result
+            
+        except Exception as e:
+            # En caso de error, hacer rollback
+            db.session.rollback()
+            # Re-lanzar la excepción para que se maneje en el endpoint
+            raise e
+            
+        finally:
+            # Siempre cerrar la sesión para liberar la conexión del pool
+            db.session.remove()
+            
+    return wrapper

@@ -68,3 +68,32 @@ create_component_response_model = component_ns.model('CreateComponentResponse', 
     'message': fields.String(description='Mensaje de respuesta'),
     'component': fields.Nested(component_detail_model, description='Componente creado')
 })
+
+# Modelo para request bulk de componentes
+bulk_components_request_model = component_ns.model('BulkComponentsRequest', {
+    'truck_ids': fields.List(fields.Integer, required=True, description='Lista de IDs de camiones', example=[1, 2, 3, 4, 5])
+})
+
+# Modelo para respuesta bulk de componentes
+truck_components_bulk_model = component_ns.model('TruckComponentsBulk', {
+    'truck_id': fields.Integer(description='ID del camión'),
+    'plate': fields.String(description='Matrícula del camión'),
+    'model': fields.String(description='Modelo del camión'),
+    'brand': fields.String(description='Marca del camión'),
+    'current_mileage': fields.Integer(description='Kilometraje actual'),
+    'overall_health_status': fields.String(description='Estado general de salud'),
+    'components': fields.List(fields.Nested(component_status_item_model), description='Componentes del camión'),
+    'total_components': fields.Integer(description='Total de componentes'),
+    'components_requiring_maintenance': fields.Integer(description='Componentes que requieren mantenimiento'),
+    'last_updated': fields.String(description='Última actualización'),
+    'error': fields.String(description='Error si no se pudo obtener el estado del camión')
+})
+
+bulk_components_response_model = component_ns.model('BulkComponentsResponse', {
+    'successful_trucks': fields.List(fields.Nested(truck_components_bulk_model), description='Camiones procesados exitosamente'),
+    'failed_trucks': fields.List(fields.Nested(truck_components_bulk_model), description='Camiones que fallaron'),
+    'total_requested': fields.Integer(description='Total de camiones solicitados'),
+    'total_successful': fields.Integer(description='Total de camiones procesados exitosamente'),
+    'total_failed': fields.Integer(description='Total de camiones que fallaron'),
+    'processing_time_ms': fields.Float(description='Tiempo de procesamiento en milisegundos')
+})

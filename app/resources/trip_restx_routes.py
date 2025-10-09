@@ -31,7 +31,8 @@ def serialize_dt(obj):
 class CreateTrip(Resource):
     @trip_ns.expect(create_trip_model)
     @trip_ns.response(201, 'Viaje creado exitosamente', create_trip_response_model)
-    @trip_ns.response(400, 'Datos inválidos o componentes requieren mantenimiento')
+    @trip_ns.response(409, 'Componentes en estado Fair requieren atención')
+    @trip_ns.response(422, 'Componentes requieren mantenimiento crítico')
     @trip_ns.response(404, 'Camión o conductor no encontrado')
     @trip_ns.response(500, 'Error interno del servidor')
     @jwt_required()
@@ -42,14 +43,30 @@ class CreateTrip(Resource):
         origin = trip_json.get('origin')
         destination = trip_json.get('destination')
         truck_id = trip_json.get('truck_id')
+        
+        print(f"DEBUG: Creating trip with data: {trip_json}")
+        print(f"DEBUG: Origin: {origin}, Destination: {destination}, Truck ID: {truck_id}")
 
         truck = TruckModel.query.get(truck_id)
         driver = UserModel.query.get(trip_json.get('driver_id'))
 
         if truck is None:
-            trip_ns.abort(404, message='Truck not found')
+            trip_ns.abort(404, 
+                error="RESOURCE_NOT_FOUND",
+                severity="error",
+                reason="truck_not_found",
+                resource_id=truck_id,
+                message="Truck not found"
+            )
+            
         if driver is None:
-            trip_ns.abort(404, message='Driver not found')
+            trip_ns.abort(404, 
+                error="RESOURCE_NOT_FOUND",
+                severity="error",
+                reason="driver_not_found",
+                resource_id=trip_json.get('driver_id'),
+                message="Driver not found"
+            )
 
         fair_components = []
         maintenance_required_components = []
@@ -60,15 +77,29 @@ class CreateTrip(Resource):
             elif maintenance.status == 'Fair':
                 fair_components.append(maintenance.component)
         
-        # Bloquear viaje si hay componentes que requieren mantenimiento
+        # Bloquear viaje si hay componentes que requieren mantenimiento (CRÍTICO)
         if maintenance_required_components:
+            print(f"DEBUG: Blocking trip - components requiring maintenance: {maintenance_required_components}")
             components_list = ', '.join(maintenance_required_components)
-            trip_ns.abort(400, message=f'Cannot create trip: Components requiring maintenance: {components_list}')
+            trip_ns.abort(422, 
+                error="TRIP_BLOCKED_COMPONENTS",
+                severity="critical",
+                reason="components_requiring_maintenance",
+                components=maintenance_required_components,
+                message=f"Cannot create trip: Components requiring maintenance: {components_list}"
+            )
         
-        # Bloquear viaje si hay componentes en estado Fair
+        # Bloquear viaje si hay componentes en estado Fair (ADVERTENCIA)
         if fair_components:
+            print(f"DEBUG: Blocking trip - components in Fair condition: {fair_components}")
             components_list = ', '.join(fair_components)
-            trip_ns.abort(400, message=f'Cannot create trip: Components in Fair condition need attention: {components_list}')
+            trip_ns.abort(409, 
+                error="TRIP_BLOCKED_COMPONENTS",
+                severity="warning",
+                reason="components_fair_condition",
+                components=fair_components,
+                message=f"Cannot create trip: Components in Fair condition need attention: {components_list}"
+            )
 
         try:
             google_location = GoogleGetLocation()
@@ -92,7 +123,14 @@ class CreateTrip(Resource):
 
         except Exception as e:
             db.session.rollback()
-            trip_ns.abort(500, message='Error creating trip', error=str(e))
+            print(f"DEBUG: Error creating trip: {str(e)}")
+            trip_ns.abort(500, 
+                error="INTERNAL_SERVER_ERROR",
+                severity="critical",
+                reason="trip_creation_failed",
+                message="Error creating trip",
+                details=str(e)
+            )
 
 
 @trip_ns.route('/all')

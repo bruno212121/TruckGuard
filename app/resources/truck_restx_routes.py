@@ -194,7 +194,10 @@ class DeleteTruck(Resource):
     def delete(self, id):
         """Eliminar un camión"""
         truck = db.session.query(TruckModel).get_or_404(id)
-        if truck.owner_id != truck.owner_id:
+        current_user = get_jwt_identity()
+        
+        # Verificar que el camión pertenece al owner actual
+        if str(truck.owner_id) != str(current_user):
             truck_ns.abort(403, message='Unauthorized')
         
         db.session.delete(truck)

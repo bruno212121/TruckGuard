@@ -94,6 +94,11 @@ success_message_model = api.model('SuccessMessage', {
     'analytics': fields.Integer(description='ID del análisis')
 })
 
+refresh_fleetanalytics_response_model = api.model('RefreshFleetAnalyticsResponse', {
+    'message': fields.String(description='Mensaje de confirmación'),
+    'analytics': fields.Nested(fleetanalytics_detail_model, description='Datos actualizados del análisis de flota')
+})
+
 # Modelos para estadísticas y reportes
 fleet_stats_model = api.model('FleetStats', {
     'total_fleets': fields.Integer(description='Total de flotas'),

@@ -35,6 +35,8 @@ class Login(Resource):
 
         response = {   
             'id': user.id,
+            'name': user.name,
+            'surname': user.surname,
             'email': user.email,
             'access_token': access_token
         }

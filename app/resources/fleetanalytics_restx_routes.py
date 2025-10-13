@@ -10,7 +10,7 @@ from ..utils.decorators import role_required
 from datetime import datetime
 from ..swagger_models.fleetanalytics_models import (
     fleet_ns, fleetanalytics_detail_model, driver_assigned_trucks_response_model,
-    maintenance_alerts_response_model
+    maintenance_alerts_response_model, refresh_fleetanalytics_response_model
 )
 
 
@@ -60,6 +60,60 @@ class GetFleetAnalytics(Resource):
             return analytics_data, 200
         except Exception as e:
             fleet_ns.abort(500, message='Error fetching fleet analytics', error=str(e))
+
+
+@fleet_ns.route('/analytics/refresh')
+class RefreshFleetAnalytics(Resource):
+    @fleet_ns.response(200, 'Métricas de flota actualizadas exitosamente', refresh_fleetanalytics_response_model)
+    @fleet_ns.response(500, 'Error interno del servidor')
+    @jwt_required()
+    @role_required(['owner'])
+    def put(self):
+        """
+        Actualizar manualmente las métricas de flota.
+        
+        Este endpoint fuerza el recálculo de todas las métricas de FleetAnalytics
+        para el owner actual. Útil cuando hay discrepancias en los datos o
+        cuando se necesita sincronizar las métricas con el estado actual.
+        """
+        current_user = get_jwt_identity()
+        
+        try:
+            # Forzar actualización de métricas
+            FleetAnalyticsModel.update_fleet_analytics(current_user)
+            
+            # Obtener las métricas actualizadas
+            fleet_analytics = FleetAnalyticsModel.query.filter_by(user_id=current_user).first()
+            
+            if fleet_analytics is None:
+                fleet_ns.abort(500, message='Error: Fleet analytics not found after update')
+
+            analytics_data = {
+                'analytics_id': fleet_analytics.id,
+                'owner_id': fleet_analytics.user_id,
+                'total_trucks': fleet_analytics.total_trucks,
+                'active_trucks': fleet_analytics.active_trucks,
+                'total_drivers': fleet_analytics.total_drivers,
+                'available_drivers': fleet_analytics.available_drivers,
+                'total_trips': fleet_analytics.total_trips,
+                'completed_trips': fleet_analytics.completed_trips,
+                'pending_trips': fleet_analytics.pending_trips,
+                'total_maintenance': fleet_analytics.total_maintenance,
+                'pending_maintenance': fleet_analytics.pending_maintenance,
+                'total_cost': fleet_analytics.total_cost,
+                'average_cost_per_trip': fleet_analytics.average_cost_per_trip,
+                'fleet_health_score': fleet_analytics.fleet_health_score,
+                'created_at': fleet_analytics.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'updated_at': fleet_analytics.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+            }
+
+            return {
+                'message': 'Fleet analytics refreshed successfully',
+                'analytics': analytics_data
+            }, 200
+            
+        except Exception as e:
+            fleet_ns.abort(500, message='Error refreshing fleet analytics', error=str(e))
 
 
 @fleet_ns.route('/driver/assigned-trucks')

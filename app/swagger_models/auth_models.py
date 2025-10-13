@@ -24,6 +24,8 @@ register_model = api.model('Register', {
 # Modelos de respuesta
 login_response_model = api.model('LoginResponse', {
     'id': fields.Integer(description='ID del usuario'),
+    'name': fields.String(description='Nombre del usuario'),
+    'surname': fields.String(description='Apellido del usuario'),
     'email': fields.String(description='Email del usuario'),
     'access_token': fields.String(description='Token JWT para autenticación')
 })

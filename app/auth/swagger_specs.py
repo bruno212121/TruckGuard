@@ -40,6 +40,14 @@ LOGIN_SPEC = {
                         "type": "integer",
                         "description": "ID del usuario"
                     },
+                    "name": {
+                        "type": "string",
+                        "description": "Nombre del usuario"
+                    },
+                    "surname": {
+                        "type": "string",
+                        "description": "Apellido del usuario"
+                    },
                     "email": {
                         "type": "string",
                         "description": "Email del usuario"

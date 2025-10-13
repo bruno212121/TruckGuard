@@ -187,7 +187,10 @@ def edit_truck(id):
 @role_required(['owner'])
 def delete_truck(id):
     truck = db.session.query(TruckModel).get_or_404(id)
-    if truck.owner_id != truck.owner_id:
+    current_user = get_jwt_identity()
+    
+    # Verificar que el camión pertenece al owner actual
+    if str(truck.owner_id) != str(current_user):
         return jsonify({'message': 'Unauthorized'}), 403
     
     db.session.delete(truck)

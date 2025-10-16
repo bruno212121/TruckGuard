@@ -209,12 +209,12 @@ class GetTruckComponentsStatus(Resource):
 
 @component_ns.route('/<int:truck_id>/list')
 class ListTruckComponents(Resource):
-    @component_ns.response(200, 'Componentes del camión obtenidos exitosamente', component_list_model)
+    @component_ns.response(200, 'Componentes actuales del camión obtenidos exitosamente', component_list_model)
     @component_ns.response(404, 'Camión no encontrado')
     @jwt_required()
     @role_required(['owner'])
     def get(self, truck_id):
-        """Listar todos los componentes de un camión"""
+        """Listar solo los componentes base actuales del camión (costo = 0)"""
         try:
             truck = TruckModel.query.get_or_404(truck_id)
             current_user = get_jwt_identity()
@@ -223,14 +223,18 @@ class ListTruckComponents(Resource):
             if str(truck.owner_id) != str(current_user):
                 component_ns.abort(403, message='Not authorized')
             
-            components = truck.maintenances
+            # Filtrar solo componentes base (costo = 0) que representan el estado actual
+            base_components = [comp for comp in truck.maintenances if comp.cost == 0]
             components_list = []
             
-            for component in components:
+            for component in base_components:
+                # Actualizar el estado del componente basado en el kilometraje actual
+                component.update_status()
+                
                 component_data = {
                     'component_id': component.id,
                     'component_name': component.component,
-                    'status': component.status,
+                    'status': component.status,  # Estado actual calculado
                     'description': component.description,
                     'cost': component.cost,
                     'mileage_interval': component.mileage_interval,
@@ -245,11 +249,62 @@ class ListTruckComponents(Resource):
             return {
                 'truck_id': truck_id,
                 'components': components_list,
-                'total_components': len(components_list)
+                'total_components': len(components_list),
+                'note': 'Solo componentes base del camión (costo = 0)'
             }, 200
             
         except Exception as e:
             component_ns.abort(500, message='Error listing components', error=str(e))
+
+
+@component_ns.route('/<int:truck_id>/history')
+class ListTruckMaintenanceHistory(Resource):
+    @component_ns.response(200, 'Historial de mantenimientos obtenido exitosamente', component_list_model)
+    @component_ns.response(404, 'Camión no encontrado')
+    @jwt_required()
+    @role_required(['owner'])
+    def get(self, truck_id):
+        """Listar el historial de mantenimientos realizados (costo > 0)"""
+        try:
+            truck = TruckModel.query.get_or_404(truck_id)
+            current_user = get_jwt_identity()
+
+            # Verificar que el camión pertenece al owner actual
+            if str(truck.owner_id) != str(current_user):
+                component_ns.abort(403, message='Not authorized')
+            
+            # Filtrar solo mantenimientos realizados (costo > 0)
+            maintenance_history = [comp for comp in truck.maintenances if comp.cost > 0]
+            maintenance_list = []
+            
+            # Ordenar por fecha de creación (más reciente primero)
+            maintenance_history.sort(key=lambda x: x.created_at, reverse=True)
+            
+            for maintenance in maintenance_history:
+                maintenance_data = {
+                    'maintenance_id': maintenance.id,
+                    'component_name': maintenance.component,
+                    'status': maintenance.status,
+                    'description': maintenance.description,
+                    'cost': maintenance.cost,
+                    'mileage_interval': maintenance.mileage_interval,
+                    'last_maintenance_mileage': maintenance.last_maintenance_mileage,
+                    'next_maintenance_mileage': maintenance.next_maintenance_mileage,
+                    'maintenance_interval': maintenance.maintenance_interval,
+                    'created_at': serialize_dt(maintenance.created_at),
+                    'updated_at': serialize_dt(maintenance.updated_at)
+                }
+                maintenance_list.append(maintenance_data)
+            
+            return {
+                'truck_id': truck_id,
+                'maintenance_history': maintenance_list,
+                'total_maintenances': len(maintenance_list),
+                'note': 'Historial de mantenimientos realizados (costo > 0)'
+            }, 200
+            
+        except Exception as e:
+            component_ns.abort(500, message='Error listing maintenance history', error=str(e))
 
 
 @component_ns.route('/<int:truck_id>/add')
@@ -369,8 +424,8 @@ class GetBulkComponentsStatus(Resource):
         """
         Obtener el estado de componentes de múltiples camiones en una sola llamada.
         
-        Este endpoint optimiza las consultas para evitar múltiples round-trips
-        al servidor y reduce la carga en el pool de conexiones.
+        OPTIMIZADO: Una sola query con JOIN para obtener todos los datos necesarios.
+        Elimina bucles anidados y operaciones pesadas.
         
         Ejemplo de uso:
         POST /components/bulk/status
@@ -379,6 +434,7 @@ class GetBulkComponentsStatus(Resource):
         }
         """
         import time
+        from collections import defaultdict
         start_time = time.time()
         
         try:
@@ -390,104 +446,133 @@ class GetBulkComponentsStatus(Resource):
             if not isinstance(truck_ids, list) or len(truck_ids) == 0:
                 component_ns.abort(400, message='truck_ids debe ser una lista no vacía')
             
-            # Validar que no hay más de 50 camiones por request (límite de seguridad)
+            # Validar límite
             if len(truck_ids) > 50:
                 component_ns.abort(400, message='Máximo 50 camiones por request')
             
             current_user = get_jwt_identity()
-            successful_trucks = []
-            failed_trucks = []
             
-            # Obtener todos los camiones en una sola query (optimización clave)
-            trucks = TruckModel.query.filter(
+            # OPTIMIZACIÓN CLAVE: Una sola query con JOIN para obtener todos los datos
+            query = db.session.query(
+                TruckModel.truck_id,
+                TruckModel.plate,
+                TruckModel.model,
+                TruckModel.brand,
+                TruckModel.mileage,
+                TruckModel.health_status,
+                MaintenanceModel.id.label('component_id'),
+                MaintenanceModel.component,
+                MaintenanceModel.status,
+                MaintenanceModel.last_maintenance_mileage,
+                MaintenanceModel.next_maintenance_mileage,
+                MaintenanceModel.maintenance_interval
+            ).join(
+                MaintenanceModel, TruckModel.truck_id == MaintenanceModel.truck_id
+            ).filter(
                 TruckModel.truck_id.in_(truck_ids),
                 TruckModel.owner_id == current_user
-            ).all()
+            ).order_by(
+                MaintenanceModel.id.desc()  # Para obtener el componente más reciente primero
+            )
             
-            # Crear un diccionario para acceso rápido
-            trucks_dict = {truck.truck_id: truck for truck in trucks}
+            # Ejecutar la query una sola vez
+            results = query.all()
             
-            # Procesar cada truck_id solicitado
-            for truck_id in truck_ids:
-                try:
-                    truck = trucks_dict.get(truck_id)
+            # Procesar resultados usando diccionarios para agrupación eficiente
+            trucks_data = defaultdict(lambda: {
+                'truck_id': None,
+                'plate': None,
+                'model': None,
+                'brand': None,
+                'current_mileage': 0,
+                'overall_health_status': None,
+                'components': {},
+                'components_requiring_maintenance': 0
+            })
+            
+            # Agrupar componentes por truck_id y component name (más eficiente)
+            for row in results:
+                truck_id = row.truck_id
+                component_name = row.component
+                
+                # Si es la primera vez que vemos este camión, guardar datos básicos
+                if trucks_data[truck_id]['truck_id'] is None:
+                    trucks_data[truck_id].update({
+                        'truck_id': truck_id,
+                        'plate': row.plate,
+                        'model': row.model,
+                        'brand': row.brand,
+                        'current_mileage': row.mileage,
+                        'overall_health_status': row.health_status
+                    })
+                
+                # Solo guardar el componente más reciente (ya están ordenados por id desc)
+                if component_name not in trucks_data[truck_id]['components']:
+                    # Calcular métricas en una sola pasada
+                    km_remaining = max(0, row.next_maintenance_mileage - row.mileage)
                     
-                    if not truck:
-                        failed_trucks.append({
-                            'truck_id': truck_id,
-                            'error': f'Camión {truck_id} no encontrado o no autorizado'
-                        })
-                        continue
+                    # Calcular porcentaje de salud
+                    if row.maintenance_interval > 0:
+                        km_since_last = row.mileage - row.last_maintenance_mileage
+                        health_percentage = max(0, 100 - (km_since_last / row.maintenance_interval) * 100)
+                    else:
+                        health_percentage = 100
                     
-                    # Obtener todos los componentes del camión
-                    components = truck.maintenances
+                    # Determinar estado calculado (sin tocar BD)
+                    calculated_status = row.status
+                    if km_remaining <= 0:
+                        calculated_status = 'Maintenance Required'
+                    elif km_remaining <= 1000:
+                        calculated_status = 'Maintenance Due Soon'
+                    else:
+                        calculated_status = 'Good'
                     
-                    # Actualizar estados solo si el camión tiene kilometraje
-                    if truck.mileage > 0:
-                        for component in components:
-                            component.update_status()
-                    
-                    # Agrupar componentes por nombre y obtener el más reciente
-                    components_by_name = {}
-                    for component in components:
-                        component_name = component.component
-                        if component_name not in components_by_name:
-                            components_by_name[component_name] = component
-                        else:
-                            if component.id > components_by_name[component_name].id:
-                                components_by_name[component_name] = component
-                    
-                    components_status = []
-                    components_requiring_maintenance = 0
-                    
-                    for component_name, component in components_by_name.items():
-                        # Calcular kilómetros restantes
-                        km_remaining = max(0, component.next_maintenance_mileage - truck.mileage)
-                        
-                        # Calcular porcentaje de salud
-                        if component.maintenance_interval > 0:
-                            km_since_last = truck.mileage - component.last_maintenance_mileage
-                            health_percentage = max(0, 100 - (km_since_last / component.maintenance_interval) * 100)
-                        else:
-                            health_percentage = 100
-                        
-                        # Contar componentes que requieren mantenimiento
-                        if component.status == 'Maintenance Required':
-                            components_requiring_maintenance += 1
-                        
-                        component_data = {
-                            'component_name': component.component,
-                            'current_status': component.status,
-                            'health_percentage': int(health_percentage),
-                            'last_maintenance_mileage': component.last_maintenance_mileage,
-                            'next_maintenance_mileage': component.next_maintenance_mileage,
-                            'km_remaining': km_remaining,
-                            'maintenance_interval': component.maintenance_interval
-                        }
-                        components_status.append(component_data)
-                    
-                    truck_data = {
-                        'truck_id': truck.truck_id,
-                        'plate': truck.plate,
-                        'model': truck.model,
-                        'brand': truck.brand,
-                        'current_mileage': truck.mileage,
-                        'overall_health_status': truck.health_status,
-                        'components': components_status,
-                        'total_components': len(components_status),
-                        'components_requiring_maintenance': components_requiring_maintenance,
-                        'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    trucks_data[truck_id]['components'][component_name] = {
+                        'component_name': component_name,
+                        'current_status': calculated_status,
+                        'health_percentage': int(health_percentage),
+                        'last_maintenance_mileage': row.last_maintenance_mileage,
+                        'next_maintenance_mileage': row.next_maintenance_mileage,
+                        'km_remaining': km_remaining,
+                        'maintenance_interval': row.maintenance_interval
                     }
                     
-                    successful_trucks.append(truck_data)
-                    
-                except Exception as e:
-                    failed_trucks.append({
-                        'truck_id': truck_id,
-                        'error': f'Error procesando camión {truck_id}: {str(e)}'
-                    })
+                    # Contar componentes que requieren mantenimiento
+                    if calculated_status == 'Maintenance Required':
+                        trucks_data[truck_id]['components_requiring_maintenance'] += 1
             
-            processing_time = (time.time() - start_time) * 1000  # Convertir a milisegundos
+            # Convertir a formato de respuesta
+            successful_trucks = []
+            failed_truck_ids = set(truck_ids)
+            
+            for truck_id, data in trucks_data.items():
+                if data['truck_id'] is not None:
+                    failed_truck_ids.discard(truck_id)
+                    
+                    truck_response = {
+                        'truck_id': data['truck_id'],
+                        'plate': data['plate'],
+                        'model': data['model'],
+                        'brand': data['brand'],
+                        'current_mileage': data['current_mileage'],
+                        'overall_health_status': data['overall_health_status'],
+                        'components': list(data['components'].values()),
+                        'total_components': len(data['components']),
+                        'components_requiring_maintenance': data['components_requiring_maintenance'],
+                        'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }
+                    successful_trucks.append(truck_response)
+            
+            # Crear lista de fallos
+            failed_trucks = [
+                {
+                    'truck_id': truck_id,
+                    'error': f'Camión {truck_id} no encontrado o no autorizado'
+                }
+                for truck_id in failed_truck_ids
+            ]
+            
+            processing_time = (time.time() - start_time) * 1000
             
             response_data = {
                 'successful_trucks': successful_trucks,
@@ -495,7 +580,8 @@ class GetBulkComponentsStatus(Resource):
                 'total_requested': len(truck_ids),
                 'total_successful': len(successful_trucks),
                 'total_failed': len(failed_trucks),
-                'processing_time_ms': round(processing_time, 2)
+                'processing_time_ms': round(processing_time, 2),
+                'optimization_note': 'Una sola query con JOIN, sin bucles anidados ni update_status()'
             }
             
             return response_data, 200

@@ -129,9 +129,14 @@ class Truck(db.Model):
         db.session.commit()
 
     def update_component(self, component_name, status): 
+        # Solo actualizar componentes base (costo = 0) que representan el estado actual
         for maintenance in self.maintenances:
-            if maintenance.component == component_name:
+            if maintenance.component == component_name and maintenance.cost == 0:
                 maintenance.status = status
+                # Actualizar también el kilometraje del último mantenimiento
+                maintenance.last_maintenance_mileage = self.mileage
+                maintenance.next_maintenance_mileage = self.mileage + maintenance.maintenance_interval
+                maintenance.accumulated_km = 0
                 db.session.add(maintenance)
         self.update_health_status()
         db.session.commit()

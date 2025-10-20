@@ -68,7 +68,7 @@
                 {
                     "component_name": "Filtros",
                     "current_status": "Excellent",
-                    "health_percentage": 95,
+                    "health_percentage": 90,
                     "last_maintenance_mileage": 140000,
                     "next_maintenance_mileage": 150000,
                     "km_remaining": 0,

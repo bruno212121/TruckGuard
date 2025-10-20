@@ -105,7 +105,7 @@ unassign_truck_response_model = api.model('UnassignTruckResponse', {
 component_status_model = api.model('ComponentStatus', {
     'component_name': fields.String(description='Nombre del componente', example='Filtros'),
     'current_status': fields.String(description='Estado actual del componente', example='Good'),
-    'health_percentage': fields.Integer(description='Porcentaje de salud del componente', example=75),
+    'health_percentage': fields.Integer(description='Porcentaje de salud del componente (100-80: Excellent, 80-60: Very Good, 60-40: Good, 40-20: Fair, 20-0: Maintenance Required)', example=50),
     'last_maintenance_mileage': fields.Integer(description='Último kilometraje de mantenimiento', example=40000),
     'next_maintenance_mileage': fields.Integer(description='Próximo kilometraje de mantenimiento', example=50000),
     'km_remaining': fields.Integer(description='Kilómetros restantes hasta próximo mantenimiento', example=5000),

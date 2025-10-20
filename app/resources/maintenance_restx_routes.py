@@ -237,6 +237,7 @@ class ApproveMaintenance(Resource):
                 maintenance.last_maintenance_mileage = truck.mileage
                 maintenance.next_maintenance_mileage = truck.mileage + maintenance.mileage_interval
                 maintenance.accumulated_km = 0
+                # Actualizar solo el componente base (costo = 0) que representa el estado actual
                 truck.update_component(maintenance.component, 'Excellent')
             
             elif approval_status == 'Rejected': 

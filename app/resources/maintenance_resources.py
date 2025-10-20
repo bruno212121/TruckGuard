@@ -125,7 +125,12 @@ def approve_maintenance(id):
         if approval_status == 'Approved':
             maintenance.status = 'Completed'
             truck = maintenance.truck
-            truck.update_component(maintenance.component, 'Excelent')
+            # Actualizar el kilometraje del último mantenimiento y el próximo
+            maintenance.last_maintenance_mileage = truck.mileage
+            maintenance.next_maintenance_mileage = truck.mileage + maintenance.mileage_interval
+            maintenance.accumulated_km = 0
+            # Actualizar solo el componente base (costo = 0) que representa el estado actual
+            truck.update_component(maintenance.component, 'Excellent')
         
         elif approval_status == 'Rejected': 
             maintenance.status = 'Rejected'

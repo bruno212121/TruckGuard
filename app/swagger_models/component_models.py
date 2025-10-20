@@ -20,7 +20,7 @@ create_component_model = component_ns.model('CreateComponent', {
 component_status_item_model = component_ns.model('ComponentStatusItem', {
     'component_name': fields.String(description='Nombre del componente', example='Filtros'),
     'current_status': fields.String(description='Estado actual del componente', example='Excellent'),
-    'health_percentage': fields.Integer(description='Porcentaje de salud del componente', example=100),
+    'health_percentage': fields.Integer(description='Porcentaje de salud del componente (100-80: Excellent, 80-60: Very Good, 60-40: Good, 40-20: Fair, 20-0: Maintenance Required)', example=90),
     'last_maintenance_mileage': fields.Integer(description='Kilometraje del último mantenimiento', example=150000),
     'next_maintenance_mileage': fields.Integer(description='Próximo kilometraje de mantenimiento', example=160000),
     'km_remaining': fields.Integer(description='Kilómetros restantes hasta el próximo mantenimiento', example=8000),

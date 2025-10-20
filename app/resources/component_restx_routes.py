@@ -166,10 +166,17 @@ class GetTruckComponentsStatus(Resource):
                 # Calcular kilómetros restantes
                 km_remaining = max(0, component.next_maintenance_mileage - truck.mileage)
                 
-                # Calcular porcentaje de salud
-                if component.maintenance_interval > 0:
-                    km_since_last = truck.mileage - component.last_maintenance_mileage
-                    health_percentage = max(0, 100 - (km_since_last / component.maintenance_interval) * 100)
+                # Calcular porcentaje de salud basado en el estado del componente
+                if component.status == 'Excellent':
+                    health_percentage = 90  # 100% a 80%
+                elif component.status == 'Very Good':
+                    health_percentage = 70  # 80% a 60%
+                elif component.status == 'Good':
+                    health_percentage = 50  # 60% a 40%
+                elif component.status == 'Fair':
+                    health_percentage = 30  # 40% a 20%
+                elif component.status == 'Maintenance Required':
+                    health_percentage = 10  # 20% a 0%
                 else:
                     health_percentage = 100
                 
@@ -452,7 +459,7 @@ class GetBulkComponentsStatus(Resource):
             
             current_user = get_jwt_identity()
             
-            # OPTIMIZACIÓN CLAVE: Una sola query con JOIN para obtener todos los datos
+            # OPTIMIZACIÓN CLAVE: Una sola query con JOIN para obtener solo componentes base (costo = 0)
             query = db.session.query(
                 TruckModel.truck_id,
                 TruckModel.plate,
@@ -465,14 +472,14 @@ class GetBulkComponentsStatus(Resource):
                 MaintenanceModel.status,
                 MaintenanceModel.last_maintenance_mileage,
                 MaintenanceModel.next_maintenance_mileage,
-                MaintenanceModel.maintenance_interval
+                MaintenanceModel.maintenance_interval,
+                MaintenanceModel.mileage_interval
             ).join(
                 MaintenanceModel, TruckModel.truck_id == MaintenanceModel.truck_id
             ).filter(
                 TruckModel.truck_id.in_(truck_ids),
-                TruckModel.owner_id == current_user
-            ).order_by(
-                MaintenanceModel.id.desc()  # Para obtener el componente más reciente primero
+                TruckModel.owner_id == current_user,
+                MaintenanceModel.cost == 0  # Solo componentes base (estado actual)
             )
             
             # Ejecutar la query una sola vez
@@ -490,7 +497,7 @@ class GetBulkComponentsStatus(Resource):
                 'components_requiring_maintenance': 0
             })
             
-            # Agrupar componentes por truck_id y component name (más eficiente)
+            # Procesar resultados y agrupar por truck_id
             for row in results:
                 truck_id = row.truck_id
                 component_name = row.component
@@ -506,26 +513,43 @@ class GetBulkComponentsStatus(Resource):
                         'overall_health_status': row.health_status
                     })
                 
-                # Solo guardar el componente más reciente (ya están ordenados por id desc)
+                # Solo procesar una vez cada componente (son únicos por truck_id + component + cost=0)
                 if component_name not in trucks_data[truck_id]['components']:
-                    # Calcular métricas en una sola pasada
-                    km_remaining = max(0, row.next_maintenance_mileage - row.mileage)
+                    # Simular update_status() - misma lógica que en MaintenanceModel
+                    current_mileage = row.mileage
+                    maintenance_interval = row.maintenance_interval
+                    last_mileage = row.last_maintenance_mileage
                     
-                    # Calcular porcentaje de salud
-                    if row.maintenance_interval > 0:
-                        km_since_last = row.mileage - row.last_maintenance_mileage
-                        health_percentage = max(0, 100 - (km_since_last / row.maintenance_interval) * 100)
-                    else:
+                    # Usar la misma lógica que MaintenanceModel.update_status()
+                    if maintenance_interval == 0:
+                        calculated_status = 'Excellent'
+                        km_remaining = 0
                         health_percentage = 100
-                    
-                    # Determinar estado calculado (sin tocar BD)
-                    calculated_status = row.status
-                    if km_remaining <= 0:
-                        calculated_status = 'Maintenance Required'
-                    elif km_remaining <= 1000:
-                        calculated_status = 'Maintenance Due Soon'
                     else:
-                        calculated_status = 'Good'
+                        km_since_last = current_mileage - last_mileage
+                        degradation_percentage = (km_since_last / maintenance_interval) * 100
+                        
+                        # Degradación basada únicamente en kilómetros recorridos (como en MaintenanceModel)
+                        if degradation_percentage >= 100:
+                            calculated_status = 'Maintenance Required'
+                            health_percentage = 10  # 20% a 0%
+                        elif degradation_percentage >= 80:
+                            calculated_status = 'Fair'
+                            health_percentage = 30  # 40% a 20%
+                        elif degradation_percentage >= 60:
+                            calculated_status = 'Good'
+                            health_percentage = 50  # 60% a 40%
+                        elif degradation_percentage >= 40:
+                            calculated_status = 'Very Good'
+                            health_percentage = 70  # 80% a 60%
+                        elif degradation_percentage >= 20:
+                            calculated_status = 'Good'
+                            health_percentage = 50  # 60% a 40%
+                        else:
+                            calculated_status = 'Excellent'
+                            health_percentage = 90  # 100% a 80%
+                        
+                        km_remaining = max(0, maintenance_interval - km_since_last)
                     
                     trucks_data[truck_id]['components'][component_name] = {
                         'component_name': component_name,
@@ -534,7 +558,7 @@ class GetBulkComponentsStatus(Resource):
                         'last_maintenance_mileage': row.last_maintenance_mileage,
                         'next_maintenance_mileage': row.next_maintenance_mileage,
                         'km_remaining': km_remaining,
-                        'maintenance_interval': row.maintenance_interval
+                        'maintenance_interval': maintenance_interval
                     }
                     
                     # Contar componentes que requieren mantenimiento
@@ -581,7 +605,7 @@ class GetBulkComponentsStatus(Resource):
                 'total_successful': len(successful_trucks),
                 'total_failed': len(failed_trucks),
                 'processing_time_ms': round(processing_time, 2),
-                'optimization_note': 'Una sola query con JOIN, sin bucles anidados ni update_status()'
+                'optimization_note': 'Una sola query con JOIN, solo componentes base (costo=0), usando misma lógica que /list'
             }
             
             return response_data, 200

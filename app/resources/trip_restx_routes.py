@@ -68,14 +68,40 @@ class CreateTrip(Resource):
                 message="Driver not found"
             )
 
+        # Obtener distancia del viaje ANTES de validar componentes
+        try:
+            google_location = GoogleGetLocation()
+            distance_info = asyncio.run(google_location.get_distance(origin, destination))
+            trip_distance = distance_info.get('distance_km', 0)
+        except Exception as e:
+            print(f"DEBUG: Error getting distance: {str(e)}")
+            trip_distance = 0  # Si no se puede obtener distancia, asumir 0
+        
         fair_components = []
         maintenance_required_components = []
+        risk_components = []
         
+        # Validar cada componente considerando la distancia del viaje
         for maintenance in truck.maintenances:
             if maintenance.status == 'Maintenance Required':
                 maintenance_required_components.append(maintenance.component)
             elif maintenance.status == 'Fair':
                 fair_components.append(maintenance.component)
+            elif maintenance.status == 'Good':
+                # Calcular si el viaje pondría el componente en riesgo
+                projected_km = maintenance.accumulated_km + trip_distance
+                projected_percentage = (projected_km / maintenance.maintenance_interval) * 100
+                
+                # Si el viaje llevaría el componente a Fair o peor, es riesgo
+                if projected_percentage >= 80:  # Fair threshold
+                    risk_components.append({
+                        'component': maintenance.component,
+                        'current_status': maintenance.status,
+                        'current_km': maintenance.accumulated_km,
+                        'projected_km': projected_km,
+                        'projected_percentage': projected_percentage,
+                        'maintenance_interval': maintenance.maintenance_interval
+                    })
         
         # Bloquear viaje si hay componentes que requieren mantenimiento (CRÍTICO)
         if maintenance_required_components:
@@ -86,12 +112,25 @@ class CreateTrip(Resource):
                 severity="critical",
                 reason="components_requiring_maintenance",
                 components=maintenance_required_components,
-                message=f"Cannot create trip: Components requiring maintenance: {components_list}"
+                message=f"No se puede crear el viaje: Los siguientes componentes requieren mantenimiento inmediato: {components_list}"
             )
         
+        # Preparar advertencias para componentes en riesgo (ALTO RIESGO)
+        risk_warnings = []
+        if risk_components:
+            print(f"DEBUG: Components at risk detected: {risk_components}")
+            for rc in risk_components:
+                risk_warnings.append({
+                    'component': rc['component'],
+                    'current_status': rc['current_status'],
+                    'current_km': rc['current_km'],
+                    'projected_km': rc['projected_km'],
+                    'projected_percentage': rc['projected_percentage'],
+                    'maintenance_interval': rc['maintenance_interval'],
+                    'risk_level': 'HIGH' if rc['projected_percentage'] >= 100 else 'MEDIUM'
+                })
+        
         try:
-            google_location = GoogleGetLocation()
-            distance_info = asyncio.run(google_location.get_distance(origin, destination))
 
             new_trip = TripModel(
                 origin=origin,
@@ -107,13 +146,37 @@ class CreateTrip(Resource):
             db.session.add(new_trip)
             db.session.commit()
 
-            # Preparar respuesta con advertencias si hay componentes Fair
+            # Preparar respuesta con advertencias
             response = {'message': 'Trip created', 'trip': new_trip.id}
             
+            # Advertencias por componentes en estado Fair
             if fair_components:
                 print(f"DEBUG: Warning - components in Fair condition: {fair_components}")
                 response['fair_components_warning'] = fair_components
-                response['warning_message'] = f"ADVERTENCIA: Los siguientes componentes están en estado Fair y tienen alta probabilidad de fallar durante el viaje: {', '.join(fair_components)}"
+                response['fair_warning_message'] = f"ADVERTENCIA: Los siguientes componentes están en estado Fair y tienen alta probabilidad de fallar durante el viaje: {', '.join(fair_components)}"
+            
+            # Advertencias por componentes en riesgo
+            if risk_warnings:
+                print(f"DEBUG: Risk warnings for components: {risk_warnings}")
+                response['risk_warnings'] = risk_warnings
+                
+                # Crear mensaje de advertencia detallado
+                high_risk_components = [rw for rw in risk_warnings if rw['risk_level'] == 'HIGH']
+                medium_risk_components = [rw for rw in risk_warnings if rw['risk_level'] == 'MEDIUM']
+                
+                warning_messages = []
+                
+                if high_risk_components:
+                    high_risk_names = [rc['component'] for rc in high_risk_components]
+                    warning_messages.append(f"🚨 ALTO RIESGO: Los siguientes componentes llegarán al 100% o más durante el viaje y tienen MUY ALTA probabilidad de fallar: {', '.join(high_risk_names)}")
+                
+                if medium_risk_components:
+                    medium_risk_names = [rc['component'] for rc in medium_risk_components]
+                    warning_messages.append(f"⚠️ RIESGO MEDIO: Los siguientes componentes llegarán al 80% o más durante el viaje y tienen probabilidad de fallar: {', '.join(medium_risk_names)}")
+                
+                response['risk_warning_message'] = " | ".join(warning_messages)
+                response['trip_distance'] = trip_distance
+                response['recommendation'] = "Se recomienda realizar mantenimiento preventivo antes del viaje para evitar fallas mecánicas."
 
             return response, 201
 

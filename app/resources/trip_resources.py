@@ -30,16 +30,53 @@ def create_trip():
     if driver is None:
         return jsonify({'error': 'Driver not found'}), 404
     
-    fair_components = []
+    # Obtener distancia del viaje ANTES de validar componentes
+    try:
+        google_location = GoogleGetLocation()
+        distance_info = asyncio.run(google_location.get_distance(origin, destination))
+        trip_distance = distance_info.get('distance_km', 0)
+    except Exception as e:
+        print(f"DEBUG: Error getting distance: {str(e)}")
+        trip_distance = 0  # Si no se puede obtener distancia, asumir 0
     
+    fair_components = []
+    risk_components = []
+    
+    # Validar cada componente considerando la distancia del viaje
     for maintenance in truck.maintenances: 
         if maintenance.status == 'Maintenance Required':
-            return jsonify({'error': f'The component {maintenance.component} requires maintenance'}), 400
+            return jsonify({'error': f'No se puede crear el viaje: El componente {maintenance.component} requiere mantenimiento inmediato'}), 400
         elif maintenance.status == 'Fair':
             fair_components.append(maintenance.component)
-        
-    google_location = GoogleGetLocation()
-    distance_info = asyncio.run(google_location.get_distance(origin, destination))
+        elif maintenance.status == 'Good':
+            # Calcular si el viaje pondría el componente en riesgo
+            projected_km = maintenance.accumulated_km + trip_distance
+            projected_percentage = (projected_km / maintenance.maintenance_interval) * 100
+            
+            # Si el viaje llevaría el componente a Fair o peor, es riesgo
+            if projected_percentage >= 80:  # Fair threshold
+                risk_components.append({
+                    'component': maintenance.component,
+                    'current_status': maintenance.status,
+                    'current_km': maintenance.accumulated_km,
+                    'projected_km': projected_km,
+                    'projected_percentage': projected_percentage,
+                    'maintenance_interval': maintenance.maintenance_interval
+                })
+    
+    # Preparar advertencias para componentes en riesgo (ALTO RIESGO)
+    risk_warnings = []
+    if risk_components:
+        for rc in risk_components:
+            risk_warnings.append({
+                'component': rc['component'],
+                'current_status': rc['current_status'],
+                'current_km': rc['current_km'],
+                'projected_km': rc['projected_km'],
+                'projected_percentage': rc['projected_percentage'],
+                'maintenance_interval': rc['maintenance_interval'],
+                'risk_level': 'HIGH' if rc['projected_percentage'] >= 100 else 'MEDIUM'
+            })
 
     new_trip = TripModel(
             origin=origin,
@@ -57,6 +94,28 @@ def create_trip():
 
     response = new_trip.to_json()
     response.update(distance_info)
+    
+    # Agregar advertencias por componentes en riesgo
+    if risk_warnings:
+        response['risk_warnings'] = risk_warnings
+        
+        # Crear mensaje de advertencia detallado
+        high_risk_components = [rw for rw in risk_warnings if rw['risk_level'] == 'HIGH']
+        medium_risk_components = [rw for rw in risk_warnings if rw['risk_level'] == 'MEDIUM']
+        
+        warning_messages = []
+        
+        if high_risk_components:
+            high_risk_names = [rc['component'] for rc in high_risk_components]
+            warning_messages.append(f"ALTO RIESGO: Los siguientes componentes llegaran al 100% o mas durante el viaje y tienen MUY ALTA probabilidad de fallar: {', '.join(high_risk_names)}")
+        
+        if medium_risk_components:
+            medium_risk_names = [rc['component'] for rc in medium_risk_components]
+            warning_messages.append(f"RIESGO MEDIO: Los siguientes componentes llegaran al 80% o mas durante el viaje y tienen probabilidad de fallar: {', '.join(medium_risk_names)}")
+        
+        response['risk_warning_message'] = " | ".join(warning_messages)
+        response['trip_distance'] = trip_distance
+        response['recommendation'] = "Se recomienda realizar mantenimiento preventivo antes del viaje para evitar fallas mecanicas."
     response['truck'] = {
         'brand': truck.brand,
         'model': truck.model,

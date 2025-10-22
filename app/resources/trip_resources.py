@@ -30,16 +30,47 @@ def create_trip():
     if driver is None:
         return jsonify({'error': 'Driver not found'}), 404
     
-    fair_components = []
+    # Obtener distancia del viaje ANTES de validar componentes
+    try:
+        google_location = GoogleGetLocation()
+        distance_info = asyncio.run(google_location.get_distance(origin, destination))
+        trip_distance = distance_info.get('distance_km', 0)
+    except Exception as e:
+        print(f"DEBUG: Error getting distance: {str(e)}")
+        trip_distance = 0  # Si no se puede obtener distancia, asumir 0
     
+    fair_components = []
+    risk_components = []
+    
+    # Validar cada componente considerando la distancia del viaje
     for maintenance in truck.maintenances: 
         if maintenance.status == 'Maintenance Required':
-            return jsonify({'error': f'The component {maintenance.component} requires maintenance'}), 400
+            return jsonify({'error': f'No se puede crear el viaje: El componente {maintenance.component} requiere mantenimiento inmediato'}), 400
         elif maintenance.status == 'Fair':
             fair_components.append(maintenance.component)
-        
-    google_location = GoogleGetLocation()
-    distance_info = asyncio.run(google_location.get_distance(origin, destination))
+        elif maintenance.status == 'Good':
+            # Calcular si el viaje pondría el componente en riesgo
+            projected_km = maintenance.accumulated_km + trip_distance
+            projected_percentage = (projected_km / maintenance.maintenance_interval) * 100
+            
+            # Si el viaje llevaría el componente a Fair o peor, es riesgo
+            if projected_percentage >= 80:  # Fair threshold
+                risk_components.append({
+                    'component': maintenance.component,
+                    'current_status': maintenance.status,
+                    'current_km': maintenance.accumulated_km,
+                    'projected_km': projected_km,
+                    'projected_percentage': projected_percentage,
+                    'maintenance_interval': maintenance.maintenance_interval
+                })
+    
+    # Bloquear viaje si hay componentes en riesgo (ALTO RIESGO)
+    if risk_components:
+        components_list = ', '.join([rc['component'] for rc in risk_components])
+        return jsonify({
+            'error': f'No se puede crear el viaje: Los siguientes componentes están en riesgo de fallar durante el viaje: {components_list}. Distancia del viaje: {trip_distance} km',
+            'risk_components': risk_components
+        }), 409
 
     new_trip = TripModel(
             origin=origin,

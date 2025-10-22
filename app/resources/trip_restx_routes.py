@@ -68,14 +68,40 @@ class CreateTrip(Resource):
                 message="Driver not found"
             )
 
+        # Obtener distancia del viaje ANTES de validar componentes
+        try:
+            google_location = GoogleGetLocation()
+            distance_info = asyncio.run(google_location.get_distance(origin, destination))
+            trip_distance = distance_info.get('distance_km', 0)
+        except Exception as e:
+            print(f"DEBUG: Error getting distance: {str(e)}")
+            trip_distance = 0  # Si no se puede obtener distancia, asumir 0
+        
         fair_components = []
         maintenance_required_components = []
+        risk_components = []
         
+        # Validar cada componente considerando la distancia del viaje
         for maintenance in truck.maintenances:
             if maintenance.status == 'Maintenance Required':
                 maintenance_required_components.append(maintenance.component)
             elif maintenance.status == 'Fair':
                 fair_components.append(maintenance.component)
+            elif maintenance.status == 'Good':
+                # Calcular si el viaje pondría el componente en riesgo
+                projected_km = maintenance.accumulated_km + trip_distance
+                projected_percentage = (projected_km / maintenance.maintenance_interval) * 100
+                
+                # Si el viaje llevaría el componente a Fair o peor, es riesgo
+                if projected_percentage >= 80:  # Fair threshold
+                    risk_components.append({
+                        'component': maintenance.component,
+                        'current_status': maintenance.status,
+                        'current_km': maintenance.accumulated_km,
+                        'projected_km': projected_km,
+                        'projected_percentage': projected_percentage,
+                        'maintenance_interval': maintenance.maintenance_interval
+                    })
         
         # Bloquear viaje si hay componentes que requieren mantenimiento (CRÍTICO)
         if maintenance_required_components:
@@ -86,12 +112,22 @@ class CreateTrip(Resource):
                 severity="critical",
                 reason="components_requiring_maintenance",
                 components=maintenance_required_components,
-                message=f"Cannot create trip: Components requiring maintenance: {components_list}"
+                message=f"No se puede crear el viaje: Los siguientes componentes requieren mantenimiento inmediato: {components_list}"
+            )
+        
+        # Bloquear viaje si hay componentes en riesgo (ALTO RIESGO)
+        if risk_components:
+            print(f"DEBUG: Blocking trip - components at risk: {risk_components}")
+            components_list = ', '.join([rc['component'] for rc in risk_components])
+            trip_ns.abort(409, 
+                error="TRIP_BLOCKED_RISK",
+                severity="high",
+                reason="components_at_risk",
+                components=risk_components,
+                message=f"No se puede crear el viaje: Los siguientes componentes están en riesgo de fallar durante el viaje: {components_list}. Distancia del viaje: {trip_distance} km"
             )
         
         try:
-            google_location = GoogleGetLocation()
-            distance_info = asyncio.run(google_location.get_distance(origin, destination))
 
             new_trip = TripModel(
                 origin=origin,

@@ -85,15 +85,21 @@ class Trip(db.Model):
                     fleet_analyticsId=fleet_analyticsId
                     )
 
-    def complete_trip(self, distance):
-        """Completa un viaje y actualiza el kilometraje del camión y degrada los componentes"""
+    def complete_trip(self, distance_km: float):
+        """Completa un viaje y actualiza el odómetro y degradación."""
+        # Sanitizar
+        if distance_km is None or distance_km < 0:
+            distance_km = 0.0
+
         self.status = 'Completed'
-        self.distance = distance
-        self.updated_at = datetime.now()
-        
-        # Actualizar el kilometraje del camión y degradar componentes
+        # Si guardás la distancia en el viaje, conviene en km (float o int redondeado)
+        self.distance = int(round(distance_km))  # si tu columna es Integer
+
+        self.updated_at = datetime.utcnow()
+
         if self.truck:
-            self.truck.update_mileage(distance)
-        
+            # Sumar al odómetro como entero (mientras mileage sea Integer)
+            self.truck.update_mileage(int(round(distance_km)))
+
         db.session.commit()
         return self

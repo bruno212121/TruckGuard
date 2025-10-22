@@ -87,20 +87,24 @@ class Truck(db.Model):
                      driver_id=driver_id)
     
 
-    def update_mileage(self, distance): 
-            self.mileage += distance 
-            for maintenance in self.maintenances:
-                maintenance.accumulated_km += distance 
-                maintenance.update_status()
-                if maintenance.accumulated_km >= maintenance.maintenance_interval: 
-                    maintenance.accumulated_km = 0 
-                    maintenance.last_maintenance_mileage = self.mileage
-                    maintenance.next_maintenance_mileage = self.mileage + maintenance.mileage_interval
-                    self.health_status = 'Maintenance Required' 
+    def update_mileage(self, distance):
+        # clamp
+        try:
+            d = int(distance)
+        except:
+            d = 0
+        if d < 0:
+            d = 0
 
-            self.update_health_status()        
-            self.updated_at = datetime.now()
-            db.session.commit()
+        self.mileage += d
+
+        for m in self.maintenances:
+            m.accumulated_km += d
+            m.update_status()
+
+        self.update_health_status()
+        self.updated_at = datetime.utcnow()
+        db.session.commit()
     
     def update_health_status(self):
         statuses = [maintenance.status for maintenance in self.maintenances]
@@ -121,7 +125,7 @@ class Truck(db.Model):
             if self.mileage >= maintenance.next_maintenance_mileage: 
                 maintenance.status = 'Pending'
                 maintenance.last_maintenance_mileage = self.mileage
-                maintenance.next_maintenance_mileage = self.mileage + maintenance.mileage_interval
+                maintenance.next_maintenance_mileage = self.mileage + maintenance.maintenance_interval
                 maintenance.update_status()
                 db.session.add(maintenance)
                 #self.notify_owner()

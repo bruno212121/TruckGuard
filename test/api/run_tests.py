@@ -133,7 +133,9 @@ def show_test_summary():
         ("test_trip_routes.py", "Tests de gestión de viajes"),
         ("test_maintenance_routes.py", "Tests de mantenimiento"),
         ("test_user_routes.py", "Tests de gestión de usuarios"),
-        ("test_fleet_analytics_routes.py", "Tests de análisis de flota")
+        ("test_fleet_analytics_routes.py", "Tests de análisis de flota"),
+        ("test_component_degradation.py", "Tests de degradación de componentes"),
+        ("test_trip_component_validation.py", "Tests de validación de componentes en viajes")
     ]
     
     for module, description in test_modules:
@@ -212,7 +214,9 @@ Ejemplos de uso:
             'trip': 'test_trip_routes.py',
             'maintenance': 'test_maintenance_routes.py',
             'user': 'test_user_routes.py',
-            'fleet': 'test_fleet_analytics_routes.py'
+            'fleet': 'test_fleet_analytics_routes.py',
+            'degradation': 'test_component_degradation.py',
+            'validation': 'test_trip_component_validation.py'
         }
         
         module_file = module_mapping.get(args.module.lower())

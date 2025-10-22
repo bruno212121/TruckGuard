@@ -71,7 +71,8 @@ def create_trip():
     }
 
     if fair_components:
-        response['Warning'] = f'The components {", ".join(fair_components)} are in fair condition'
+        response['fair_components_warning'] = fair_components
+        response['warning_message'] = f"ADVERTENCIA: Los siguientes componentes están en estado Fair y tienen alta probabilidad de fallar durante el viaje: {', '.join(fair_components)}"
 
     return response, 201
 
@@ -145,15 +146,139 @@ def update_trip(id):
 
     new_status = trip_json.get('status') 
 
-
     if new_status not in ['Pending', 'In Course', 'Completed']:
         return jsonify({'message': 'Invalid status value'}), 400
 
+    # Detectar si el viaje cambia de "In Course" a "Completed"
+    was_in_course = trip.status == 'In Course'
+    is_being_completed = new_status == 'Completed'
+    
+    if was_in_course and is_being_completed:
+        # Cuando se completa un viaje desde "In Course", usar lógica simplificada
+        try:
+            origin = trip.origin
+            destination = trip.destination
+
+            google_location = GoogleGetLocation()
+            distance_info = asyncio.run(google_location.get_distance(origin, destination))
+            distance_km = int(distance_info['distance'].split(' ')[0].replace(',', ''))
+
+            truck = trip.truck
+            
+            # Verificar estado ANTES del viaje
+            components_before = []
+            for maintenance in truck.maintenances:
+                components_before.append({
+                    'component': maintenance.component, 
+                    'status': maintenance.status
+                })
+
+            # Completar viaje usando el método simplificado
+            trip.complete_trip(distance_km)
+            
+            # Verificar cambios después del viaje
+            components_reaching_limit = []
+            for maintenance in truck.maintenances:
+                component_before = next((c for c in components_before if c['component'] == maintenance.component), None)
+                if component_before and component_before['status'] != 'Maintenance Required' and maintenance.status == 'Maintenance Required':
+                    components_reaching_limit.append(maintenance.component)
+
+            FleetAnalyticsModel.update_fleet_analytics(truck.owner_id)
+
+            response = {
+                'message': 'Trip completed and updated', 
+                'trip': trip.to_json(),
+                'distance_km': distance_km,
+                'remaining_km_until_services': truck.calculate_remaining_km_until_services()
+            }
+            
+            # Información sobre degradación
+            if components_reaching_limit:
+                response['components_reaching_maintenance_limit'] = components_reaching_limit
+                response['warning_message'] = f"Los siguientes componentes alcanzaron su límite de mantenimiento: {', '.join(components_reaching_limit)}"
+
+            return jsonify(response), 200
+
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'message': 'Error completing trip during status update', 'error': str(e)}), 500
+
+    # Verificar si el viaje cambia a "In Course" - validar que los componentes puedan realizar el viaje
+    is_starting_trip = new_status == 'In Course' and trip.status != 'In Course'
+    components_at_risk = []
+    fair_components_warning = []
+    
+    if is_starting_trip:
+        truck = trip.truck
+        maintenance_required_components = []
+        fair_components = []
+        
+        # Verificar estado actual de componentes
+        for maintenance in truck.maintenances:
+            if maintenance.status == 'Maintenance Required':
+                maintenance_required_components.append(maintenance.component)
+            elif maintenance.status == 'Fair':
+                fair_components.append(maintenance.component)
+        
+        # Si hay componentes que requieren mantenimiento crítico, bloquear el viaje
+        if maintenance_required_components:
+            components_list = ', '.join(maintenance_required_components)
+            return jsonify({
+                'error': 'TRIP_BLOCKED_COMPONENTS',
+                'severity': 'critical',
+                'reason': 'components_requiring_maintenance',
+                'components': maintenance_required_components,
+                'message': f'Cannot start trip: Components requiring maintenance: {components_list}'
+            }), 422
+        
+        # Registrar componentes en estado Fair como advertencia (NO bloquear)
+        if fair_components:
+            fair_components_warning = fair_components.copy()
+        
+        # Verificar si algún componente está cerca de su límite de mantenimiento
+        try:
+            origin = trip.origin
+            destination = trip.destination
+            google_location = GoogleGetLocation()
+            distance_info = asyncio.run(google_location.get_distance(origin, destination))
+            distance_km = int(distance_info['distance'].split(' ')[0].replace(',', ''))
+            
+            for maintenance in truck.maintenances:
+                # Si el componente está cerca de su límite (menos de 20% del intervalo restante)
+                km_remaining = maintenance.next_maintenance_mileage - truck.mileage
+                if km_remaining > 0 and distance_km >= (km_remaining * 0.8):
+                    components_at_risk.append(maintenance.component)
+                    
+        except Exception as e:
+            # Si no se puede calcular la distancia, continuar sin esta validación adicional
+            pass
+
+    # Para otros cambios de estado, solo actualizar el estado
     trip.status = new_status  # Actualizando el estado.
 
     try:
         db.session.commit() 
-        return jsonify({'message': 'Trip updated', 'trip': trip.to_json()}), 200
+        response = {'message': 'Trip updated', 'trip': trip.to_json()}
+        
+        # Incluir advertencias si el viaje está iniciando
+        if is_starting_trip:
+            warnings = []
+            
+            # Advertencia sobre componentes en estado Fair (alta probabilidad de falla)
+            if fair_components_warning:
+                response['fair_components_warning'] = fair_components_warning
+                warnings.append(f"ADVERTENCIA: Los siguientes componentes están en estado Fair y tienen alta probabilidad de fallar durante el viaje: {', '.join(fair_components_warning)}")
+            
+            # Advertencia sobre componentes cerca del límite
+            if components_at_risk:
+                response['components_at_risk'] = components_at_risk
+                warnings.append(f"Los siguientes componentes están cerca de su límite de mantenimiento: {', '.join(components_at_risk)}")
+            
+            # Combinar todas las advertencias en un mensaje
+            if warnings:
+                response['warning_message'] = " | ".join(warnings)
+        
+        return jsonify(response), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'message': 'Error updating the trip', 'error': str(e)}), 500
@@ -174,33 +299,45 @@ def complete_trip(id):
         origin = trip.origin
         destination = trip.destination
 
-
         google_location = GoogleGetLocation()
         distance_info = asyncio.run(google_location.get_distance(origin, destination)) 
         distance_km = int(distance_info['distance'].split(' ')[0].replace(',', '')) 
 
         truck = trip.truck
-        truck.update_mileage(distance_km)
-        truck.check_maintenance()
+        
+        # Verificar estado ANTES del viaje
+        components_before = []
+        for maintenance in truck.maintenances:
+            components_before.append({
+                'component': maintenance.component, 
+                'status': maintenance.status
+            })
 
-
-        remaining_km = truck.calculate_remaining_km_until_services()
-    
-        truck.check_maintenance()
-
-        trip.status = 'Completed'
-
-        db.session.commit()
+        # Completar viaje usando el método simplificado
+        trip.complete_trip(distance_km)
+        
+        # Verificar cambios después del viaje
+        components_reaching_limit = []
+        for maintenance in truck.maintenances:
+            component_before = next((c for c in components_before if c['component'] == maintenance.component), None)
+            if component_before and component_before['status'] != 'Maintenance Required' and maintenance.status == 'Maintenance Required':
+                components_reaching_limit.append(maintenance.component)
 
         FleetAnalyticsModel.update_fleet_analytics(truck.owner_id)
 
         response = trip.to_json() 
         response.update(distance_info) 
         response.update(truck.to_json()) 
-        response['remaining_km_until_services'] = remaining_km
+        response['remaining_km_until_services'] = truck.calculate_remaining_km_until_services()
+        
+        # Información sobre degradación
+        if components_reaching_limit:
+            response['components_reaching_maintenance_limit'] = components_reaching_limit
+            response['warning_message'] = f"Los siguientes componentes alcanzaron su límite de mantenimiento: {', '.join(components_reaching_limit)}"
 
         return jsonify(response), 200
     except Exception as e:
+        print(f"ERROR completando viaje en trip_resources: {str(e)}")
         return jsonify({'message': "Error completing the trip", 'error': str(e)}), 500
 
 

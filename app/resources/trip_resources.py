@@ -64,13 +64,19 @@ def create_trip():
                     'maintenance_interval': maintenance.maintenance_interval
                 })
     
-    # Bloquear viaje si hay componentes en riesgo (ALTO RIESGO)
+    # Preparar advertencias para componentes en riesgo (ALTO RIESGO)
+    risk_warnings = []
     if risk_components:
-        components_list = ', '.join([rc['component'] for rc in risk_components])
-        return jsonify({
-            'error': f'No se puede crear el viaje: Los siguientes componentes están en riesgo de fallar durante el viaje: {components_list}. Distancia del viaje: {trip_distance} km',
-            'risk_components': risk_components
-        }), 409
+        for rc in risk_components:
+            risk_warnings.append({
+                'component': rc['component'],
+                'current_status': rc['current_status'],
+                'current_km': rc['current_km'],
+                'projected_km': rc['projected_km'],
+                'projected_percentage': rc['projected_percentage'],
+                'maintenance_interval': rc['maintenance_interval'],
+                'risk_level': 'HIGH' if rc['projected_percentage'] >= 100 else 'MEDIUM'
+            })
 
     new_trip = TripModel(
             origin=origin,
@@ -88,6 +94,28 @@ def create_trip():
 
     response = new_trip.to_json()
     response.update(distance_info)
+    
+    # Agregar advertencias por componentes en riesgo
+    if risk_warnings:
+        response['risk_warnings'] = risk_warnings
+        
+        # Crear mensaje de advertencia detallado
+        high_risk_components = [rw for rw in risk_warnings if rw['risk_level'] == 'HIGH']
+        medium_risk_components = [rw for rw in risk_warnings if rw['risk_level'] == 'MEDIUM']
+        
+        warning_messages = []
+        
+        if high_risk_components:
+            high_risk_names = [rc['component'] for rc in high_risk_components]
+            warning_messages.append(f"ALTO RIESGO: Los siguientes componentes llegaran al 100% o mas durante el viaje y tienen MUY ALTA probabilidad de fallar: {', '.join(high_risk_names)}")
+        
+        if medium_risk_components:
+            medium_risk_names = [rc['component'] for rc in medium_risk_components]
+            warning_messages.append(f"RIESGO MEDIO: Los siguientes componentes llegaran al 80% o mas durante el viaje y tienen probabilidad de fallar: {', '.join(medium_risk_names)}")
+        
+        response['risk_warning_message'] = " | ".join(warning_messages)
+        response['trip_distance'] = trip_distance
+        response['recommendation'] = "Se recomienda realizar mantenimiento preventivo antes del viaje para evitar fallas mecanicas."
     response['truck'] = {
         'brand': truck.brand,
         'model': truck.model,

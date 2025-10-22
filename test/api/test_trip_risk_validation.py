@@ -112,8 +112,13 @@ class TestTripRiskValidation:
             risk_detected = projected_percentage >= 80
             assert risk_detected, "El sistema debería detectar que el componente está en riesgo"
             
+            # Verificar que el riesgo sería ALTO (>=100%)
+            is_high_risk = projected_percentage >= 100
+            risk_level = 'HIGH' if is_high_risk else 'MEDIUM'
+            
             print(f"\n[OK] RIESGO DETECTADO: El componente {maintenance.component} estaria en {projected_percentage:.1f}% despues del viaje")
-            print("[OK] El viaje deberia ser BLOQUEADO por seguridad")
+            print(f"[OK] Nivel de riesgo: {risk_level}")
+            print("[OK] El viaje seria PERMITIDO pero con ADVERTENCIA de riesgo")
             
             # 5. Verificar que un viaje corto SÍ sería permitido
             short_trip_distance = 1000  # km
@@ -128,6 +133,14 @@ class TestTripRiskValidation:
             assert short_projected_percentage < 80, f"El viaje corto no debería estar en riesgo, pero está en {short_projected_percentage:.1f}%"
             
             print("[OK] Viaje corto seria PERMITIDO (sin riesgo)")
+            
+            # 6. Simular la respuesta que recibiría el usuario
+            print(f"\n=== Simulacion de Respuesta del Sistema ===")
+            print(f"Estado: VIAJE PERMITIDO con advertencias")
+            print(f"Mensaje: Trip created")
+            print(f"Advertencia: ALTO RIESGO: Los siguientes componentes llegaran al 100% o mas durante el viaje y tienen MUY ALTA probabilidad de fallar: {maintenance.component}")
+            print(f"Recomendacion: Se recomienda realizar mantenimiento preventivo antes del viaje para evitar fallas mecanicas.")
+            print(f"El usuario puede decidir si continuar o no con el viaje")
             
             print("\n[OK] Test de validación de riesgo completado exitosamente")
 

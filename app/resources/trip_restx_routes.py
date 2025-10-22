@@ -115,17 +115,20 @@ class CreateTrip(Resource):
                 message=f"No se puede crear el viaje: Los siguientes componentes requieren mantenimiento inmediato: {components_list}"
             )
         
-        # Bloquear viaje si hay componentes en riesgo (ALTO RIESGO)
+        # Preparar advertencias para componentes en riesgo (ALTO RIESGO)
+        risk_warnings = []
         if risk_components:
-            print(f"DEBUG: Blocking trip - components at risk: {risk_components}")
-            components_list = ', '.join([rc['component'] for rc in risk_components])
-            trip_ns.abort(409, 
-                error="TRIP_BLOCKED_RISK",
-                severity="high",
-                reason="components_at_risk",
-                components=risk_components,
-                message=f"No se puede crear el viaje: Los siguientes componentes están en riesgo de fallar durante el viaje: {components_list}. Distancia del viaje: {trip_distance} km"
-            )
+            print(f"DEBUG: Components at risk detected: {risk_components}")
+            for rc in risk_components:
+                risk_warnings.append({
+                    'component': rc['component'],
+                    'current_status': rc['current_status'],
+                    'current_km': rc['current_km'],
+                    'projected_km': rc['projected_km'],
+                    'projected_percentage': rc['projected_percentage'],
+                    'maintenance_interval': rc['maintenance_interval'],
+                    'risk_level': 'HIGH' if rc['projected_percentage'] >= 100 else 'MEDIUM'
+                })
         
         try:
 
@@ -143,13 +146,37 @@ class CreateTrip(Resource):
             db.session.add(new_trip)
             db.session.commit()
 
-            # Preparar respuesta con advertencias si hay componentes Fair
+            # Preparar respuesta con advertencias
             response = {'message': 'Trip created', 'trip': new_trip.id}
             
+            # Advertencias por componentes en estado Fair
             if fair_components:
                 print(f"DEBUG: Warning - components in Fair condition: {fair_components}")
                 response['fair_components_warning'] = fair_components
-                response['warning_message'] = f"ADVERTENCIA: Los siguientes componentes están en estado Fair y tienen alta probabilidad de fallar durante el viaje: {', '.join(fair_components)}"
+                response['fair_warning_message'] = f"ADVERTENCIA: Los siguientes componentes están en estado Fair y tienen alta probabilidad de fallar durante el viaje: {', '.join(fair_components)}"
+            
+            # Advertencias por componentes en riesgo
+            if risk_warnings:
+                print(f"DEBUG: Risk warnings for components: {risk_warnings}")
+                response['risk_warnings'] = risk_warnings
+                
+                # Crear mensaje de advertencia detallado
+                high_risk_components = [rw for rw in risk_warnings if rw['risk_level'] == 'HIGH']
+                medium_risk_components = [rw for rw in risk_warnings if rw['risk_level'] == 'MEDIUM']
+                
+                warning_messages = []
+                
+                if high_risk_components:
+                    high_risk_names = [rc['component'] for rc in high_risk_components]
+                    warning_messages.append(f"🚨 ALTO RIESGO: Los siguientes componentes llegarán al 100% o más durante el viaje y tienen MUY ALTA probabilidad de fallar: {', '.join(high_risk_names)}")
+                
+                if medium_risk_components:
+                    medium_risk_names = [rc['component'] for rc in medium_risk_components]
+                    warning_messages.append(f"⚠️ RIESGO MEDIO: Los siguientes componentes llegarán al 80% o más durante el viaje y tienen probabilidad de fallar: {', '.join(medium_risk_names)}")
+                
+                response['risk_warning_message'] = " | ".join(warning_messages)
+                response['trip_distance'] = trip_distance
+                response['recommendation'] = "Se recomienda realizar mantenimiento preventivo antes del viaje para evitar fallas mecánicas."
 
             return response, 201
 
